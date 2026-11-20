@@ -1,58 +1,526 @@
-```html
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Multi-Toko - Real-Time Multi-Branch Ledger</title>
-    <!-- Tailwind CSS -->
+    <title>Server Multi-Toko — System Real-Time</title>
+    <!-- Tailwind CSS CDN for utility classes -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel standalone for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Chart.js for Admin Analytics -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    
     <style>
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #000000;
-            color: #f3f4f6;
+        :root {
+            --bg-main: #000000;
+            --bg-card: #0d0d10;
+            --bg-card-hover: #141419;
+            --border-color: #222228;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-amber: #f59e0b;
+            --accent-purple: #a855f7;
+            --accent-rose: #f43f5e;
         }
+
+        body {
+            background-color: var(--bg-main);
+            color: #f3f4f6;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
         .tabular-nums {
             font-variant-numeric: tabular-nums;
         }
+
+        /* Custom Scrollbar */
         ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
         }
         ::-webkit-scrollbar-track {
             background: #000000;
         }
         ::-webkit-scrollbar-thumb {
-            background: #232329;
+            background: #222228;
             border-radius: 9999px;
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #3b82f6;
         }
+
+        /* Table Inputs */
+        input.table-input {
+            background: transparent;
+            border: 1px solid transparent;
+            color: inherit;
+            padding: 4px 6px;
+            border-radius: 6px;
+            width: 100%;
+            transition: all 0.15s ease;
+        }
+        input.table-input:hover {
+            border-color: #33333d;
+            background: rgba(255, 255, 255, 0.03);
+        }
+        input.table-input:focus {
+            outline: none;
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .pulse-anim {
+            animation: pulse-ring 1s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
     </style>
 </head>
-<body class="min-h-screen bg-black text-gray-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
-    <div id="root"></div>
+<body class="min-h-screen flex flex-col antialiased">
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+    <!-- Global Error Fallback Banner -->
+    <div id="error-banner" class="hidden bg-rose-950/90 text-rose-200 border-b border-rose-800 p-3 text-xs text-center font-bold sticky top-0 z-50">
+        <span id="error-msg">Terjadi gangguan tampilan.</span>
+        <button onclick="window.location.reload()" class="ml-3 underline cursor-pointer">Muat Ulang Halaman</button>
+    </div>
 
-        const LOCAL_STORAGE_DB_KEY = 'multi_toko_db_v2';
-        const FIREBASE_CONFIG_KEY = 'multi_toko_fb_cfg_v2';
-        const BROADCAST_CHANNEL_NAME = 'multi_toko_channel_v2';
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-emerald-500 text-black font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300">
+        Message
+    </div>
+
+    <!-- Modal Firebase & Backup Config -->
+    <div id="modal-firebase" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-[#222228] pb-3">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <span>⚡</span> Hubungkan Firebase Cloud Realtime
+                </h3>
+                <button onclick="closeFirebaseModal()" class="text-gray-400 hover:text-white font-bold cursor-pointer text-sm">✕</button>
+            </div>
+            
+            <p class="text-xs text-gray-400 leading-relaxed">
+                Tempelkan <b>Database URL</b> Firebase Anda agar input dari cabang di HP/Laptop mana pun <span className="text-emerald-400 font-semibold">langsung tersinkron ke Server Pusat secara real-time (&lt; 1 detik)</span>.
+            </p>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Firebase Database URL</label>
+                    <input type="url" id="fb-url-input" placeholder="https://proyek-anda-default-rtdb.firebaseio.com" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+                    <p class="text-[11px] text-gray-500 mt-1">
+                        Aturan RTDB di Firebase: <code>".read": true, ".write": true</code>
+                    </p>
+                </div>
+
+                <div class="pt-2 border-t border-[#222228] flex items-center justify-between">
+                    <button onclick="exportDataJSON()" class="px-3 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer">
+                        📥 Download Backup JSON
+                    </button>
+                    <label class="px-3 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
+                        📤 Restore Backup JSON
+                        <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="importDataJSON(event)" />
+                    </label>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2 border-t border-[#222228]">
+                    <button onclick="closeFirebaseModal()" class="px-4 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-gray-300 cursor-pointer">Batal</button>
+                    <button onclick="saveFirebaseConfig()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-md cursor-pointer">Simpan & Hubungkan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER SYSTEM -->
+    <header className="sticky top-0 z-30 bg-black/95 border-b border-[#222228] backdrop-blur-md">
+        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                <div id="header-badge" class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg">
+                    SRV
+                </div>
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h1 id="header-title" class="text-base sm:text-lg font-bold text-white tracking-tight">
+                            Server Pusat Multi-Toko
+                        </h1>
+                        <span id="sync-status-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-blue-500/10 text-blue-300 border-blue-500/30 flex items-center gap-1.5">
+                            <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                            <span id="sync-text">Lokal (Tab Ini)</span> • <span id="sync-time">11:11:00</span>
+                        </span>
+                    </div>
+                    <p id="header-sub" class="text-xs text-gray-400">
+                        Memuat data toko...
+                    </p>
+                </div>
+
+                <!-- Central Selector Dropdown (Hidden in Branch Mode) -->
+                <div id="store-selector-wrapper" class="hidden items-center gap-2 bg-[#0d0d10] border border-[#222228] rounded-xl px-3 py-1.5">
+                    <label class="text-xs font-medium text-gray-400">Inspeksi Buku:</label>
+                    <select id="store-selector" onchange="handleSelectStore(this.value)" class="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer">
+                        <!-- Options generated dynamically -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Server Navigation Tabs (Hidden in Branch Mode) -->
+            <div id="server-nav-tabs" class="flex items-center gap-2 overflow-x-auto">
+                <button onclick="openFirebaseModal()" class="px-3 py-1.5 rounded-xl bg-[#0d0d10] hover:bg-[#141419] text-gray-300 border border-[#222228] text-xs font-semibold flex items-center gap-1 cursor-pointer">
+                    <span>⚡</span> Cloud Sync
+                </button>
+                <nav class="flex items-center gap-1 bg-[#0d0d10] border border-[#222228] p-1 rounded-xl">
+                    <button id="tab-btn-dashboard" onclick="switchServerTab('dashboard')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white cursor-pointer">
+                        Pantau Semua Toko
+                    </button>
+                    <button id="tab-btn-ledger" onclick="switchServerTab('ledger')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer">
+                        Buku Toko
+                    </button>
+                    <button id="tab-btn-manage" onclick="switchServerTab('manage')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer">
+                        Kelola Toko & Link
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        <!-- SECTION A: BRANCH OR LEDGER VIEW (Tampil saat Mode Cabang ATAU Tab Buku Toko) -->
+        <div id="view-ledger" class="space-y-6">
+            
+            <!-- Store Banner -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span id="branch-badge-code" class="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
+                            TK-01
+                        </span>
+                        <h2 id="branch-store-name" class="text-lg sm:text-xl font-bold text-white">
+                            Toko Utama
+                        </h2>
+                    </div>
+                    <p id="branch-store-meta" class="text-xs text-gray-400 mt-1">
+                        Lokasi: - • PIC: -
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button onclick="handleAddNewDateRow()" class="px-3.5 py-2 rounded-xl bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-semibold cursor-pointer">
+                        + Tambah Tanggal
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Cards Summary -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
+                <div class="bg-blue-600 text-white rounded-2xl p-4 sm:p-5 shadow-lg">
+                    <div class="text-xs font-bold uppercase opacity-80">Omset Rata-Rata</div>
+                    <div id="kpi-avg-omzet" class="text-2xl sm:text-3xl font-extrabold mt-1">Rp0</div>
+                    <div id="kpi-active-days" class="text-xs font-medium mt-1 opacity-80">Hari aktif: 0 / 22 hari</div>
+                </div>
+
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
+                    <div class="text-xs font-semibold uppercase text-gray-400">Total Omset Toko</div>
+                    <div id="kpi-total-omzet" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
+                    <div class="text-xs text-gray-500 mt-1">Akumulasi input harian</div>
+                </div>
+
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
+                    <div class="text-xs font-semibold uppercase text-gray-400">Total Simpasan (7.5%)</div>
+                    <div id="kpi-total-s75" class="text-2xl font-extrabold text-amber-300 mt-1">Rp0</div>
+                    <div id="kpi-avg-s75" class="text-xs text-gray-500 mt-1">Rata-rata: Rp0</div>
+                </div>
+
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
+                    <div class="text-xs font-semibold uppercase text-gray-400">Total Belanja & Selisih</div>
+                    <div id="kpi-total-belanja" class="text-xl font-extrabold text-purple-300 mt-1">Rp0</div>
+                    <div id="kpi-net-diff" class="text-xs font-bold mt-1 text-emerald-400">Selisih Bersih: Rp0</div>
+                </div>
+            </div>
+
+            <!-- Form Quick Input -->
+            <section class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Form Input Transaksi Harian</h3>
+                        <p class="text-xs text-gray-400">Ketik omzet atau belanja di sini atau edit langsung di tabel di bawah.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="search-ledger" oninput="renderLedgerTable()" placeholder="Cari tanggal/hari..." class="bg-black border border-[#222228] rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500" />
+                    </div>
+                </div>
+
+                <form onsubmit="handleFormInputSubmit(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Tanggal</label>
+                        <input type="date" id="input-form-date" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Omset / Hari (Rp)</label>
+                        <input type="number" min="0" step="any" id="input-form-omzet" placeholder="0" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Total Belanja (Rp)</label>
+                        <input type="number" min="0" step="any" id="input-form-belanja" placeholder="0" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Persen (%) Opsional</label>
+                        <input type="number" min="0" max="100" id="input-form-percent" placeholder="Otomatis" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    <div>
+                        <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 px-4 rounded-xl text-xs shadow transition cursor-pointer">
+                            Simpan Data
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Tabel Pembukuan Harian -->
+            <section class="bg-[#0d0d10] border border-[#222228] rounded-2xl overflow-hidden shadow-2xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-xs tabular-nums">
+                        <thead>
+                            <tr class="bg-[#141419] text-gray-200 font-bold border-b border-[#222228]">
+                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-center w-12">NO.</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-left min-w-[125px]">tanggal</th>
+                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-left w-20">hari</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[140px]">omset/hari</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-emerald-500 text-black">Simpasan 7.5%</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-amber-400 text-black">Simpasan 7%</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-amber-500 text-black">Simpasan 6.5%</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-rose-500 text-white">simpasan 6%</th>
+                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[130px]">total belanja</th>
+                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-center w-20">persen</th>
+                                <th class="py-2.5 px-2 text-center w-20">aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledger-tbody">
+                            <!-- Dynamic Rows -->
+                        </tbody>
+                        <tfoot>
+                            <tr class="bg-purple-950/80 text-white font-bold border-t-2 border-purple-700">
+                                <td colSpan="4" class="py-2.5 px-3 border-r border-purple-800 text-right uppercase text-xs text-purple-200">
+                                    Total Simpasan Per Skema
+                                </td>
+                                <td id="foot-s75" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
+                                <td id="foot-s70" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
+                                <td id="foot-s65" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
+                                <td id="foot-s60" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
+                                <td id="foot-belanja" class="py-2.5 px-3 border-r border-purple-800 text-right text-purple-200">Rp0</td>
+                                <td id="foot-pct" class="py-2.5 px-2.5 border-r border-purple-800 text-center text-purple-200">0%</td>
+                                <td id="foot-days" class="py-2.5 px-2 text-center text-xs text-purple-300">0 hr</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Bottom Rekapitulasi -->
+            <section class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                <div class="xl:col-span-7 bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl overflow-x-auto">
+                    <h3 class="text-sm font-bold text-white mb-3">Rekap Rata-Rata, Jumlah Hari & Hasil Simpasan</h3>
+                    <table class="w-full border-collapse text-xs tabular-nums">
+                        <thead>
+                            <tr class="bg-[#141419] text-gray-200 font-bold">
+                                <th class="py-2 px-3 border border-[#222228] text-left">Keterangan</th>
+                                <th class="py-2 px-3 border border-[#222228] text-right bg-emerald-500 text-black">7.5%</th>
+                                <th class="py-2 px-3 border border-[#222228] text-right bg-amber-400 text-black">7%</th>
+                                <th class="py-2 px-3 border border-[#222228] text-right bg-amber-500 text-black">6.5%</th>
+                                <th class="py-2 px-3 border border-[#222228] text-right bg-rose-500 text-white">6%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="bg-amber-400 text-black font-bold">
+                                <td class="py-2 px-3 border border-amber-600">hasil rata rata</td>
+                                <td id="rekap-avg-s75" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-avg-s70" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-avg-s65" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-avg-s60" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                            </tr>
+                            <tr class="bg-amber-300 text-black font-extrabold">
+                                <td class="py-2 px-3 border border-amber-500">jumlah hari aktif</td>
+                                <td id="rekap-days-1" class="py-2 px-3 border border-amber-500 text-right">0</td>
+                                <td id="rekap-days-2" class="py-2 px-3 border border-amber-500 text-right">0</td>
+                                <td id="rekap-days-3" class="py-2 px-3 border border-amber-500 text-right">0</td>
+                                <td id="rekap-days-4" class="py-2 px-3 border border-amber-500 text-right">0</td>
+                            </tr>
+                            <tr class="bg-amber-400 text-black font-bold">
+                                <td class="py-2 px-3 border border-amber-600">hasil simpasan</td>
+                                <td id="rekap-total-s75" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-total-s70" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-total-s65" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                                <td id="rekap-total-s60" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="xl:col-span-5 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-4">
+                    <h3 class="text-sm font-bold text-white">Ringkasan Omset, Belanja & Selisih</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 tabular-nums">
+                        <div class="rounded-xl bg-emerald-500 text-black p-3.5 shadow">
+                            <div class="text-[11px] font-bold uppercase opacity-80">Total Omset</div>
+                            <div id="side-total-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
+                        </div>
+                        <div class="rounded-xl bg-blue-600 text-white p-3.5 shadow">
+                            <div class="text-[11px] font-bold uppercase opacity-80">omset rata rata</div>
+                            <div id="side-avg-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
+                        </div>
+                        <div class="rounded-xl bg-purple-600 text-white p-3.5 shadow">
+                            <div class="text-[11px] font-bold uppercase opacity-90">Total Belanja</div>
+                            <div id="side-total-belanja" class="text-lg font-extrabold mt-0.5">Rp0</div>
+                        </div>
+                        <div class="rounded-xl bg-amber-500 text-black p-3.5 shadow">
+                            <div class="text-[11px] font-bold uppercase opacity-80">Omset Bersih (Setelah 7.5%)</div>
+                            <div id="side-net-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- SECTION B: SERVER DASHBOARD TAB (Only in Central Mode) -->
+        <div id="view-dashboard" class="hidden space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
+                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Omset Semua Toko</div>
+                    <div id="srv-grand-omzet" class="text-2xl font-extrabold text-blue-400 mt-1">Rp0</div>
+                    <div id="srv-grand-stores" class="text-xs text-gray-500 mt-1">Dari 0 cabang</div>
+                </div>
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
+                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Simpasan 7.5% Gabungan</div>
+                    <div id="srv-grand-s75" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
+                    <div class="text-xs text-gray-500 mt-1">Simpasan otomatis 7.5%</div>
+                </div>
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
+                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Belanja Gabungan</div>
+                    <div id="srv-grand-belanja" class="text-2xl font-extrabold text-purple-300 mt-1">Rp0</div>
+                    <div id="srv-grand-days" class="text-xs text-gray-500 mt-1">Total hari aktif: 0 hr</div>
+                </div>
+                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
+                    <div class="text-xs font-semibold text-gray-400 uppercase">Selisih Bersih Server</div>
+                    <div id="srv-grand-net" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
+                    <div class="text-xs text-gray-500 mt-1">Omset - Belanja - Simpasan 7.5%</div>
+                </div>
+            </div>
+
+            <!-- Log Activity Banner -->
+            <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-bold text-white">Log Aktivitas Masuk Real-Time</h3>
+                        <p class="text-xs text-gray-400">Setiap perubahan input dari toko cabang langsung tercatat di bawah secara otomatis.</p>
+                    </div>
+                </div>
+                <ul id="server-logs-list" class="space-y-1.5 text-xs max-h-48 overflow-y-auto">
+                    <!-- Dynamic logs -->
+                </ul>
+            </div>
+
+            <!-- Multi-Store Overview Table -->
+            <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl overflow-hidden shadow-xl">
+                <div class="p-4 sm:p-5 border-b border-[#222228] flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-bold text-white">Ringkasan & Akses Cepat Semua Cabang</h3>
+                        <p class="text-xs text-gray-400">Pantau performa harian masing-masing toko cabang.</p>
+                    </div>
+                    <button onclick="switchServerTab('manage')" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">
+                        + Kelola Toko & Link
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-xs tabular-nums">
+                        <thead>
+                            <tr class="bg-[#141419] text-gray-200 font-bold border-b border-[#222228]">
+                                <th class="py-3 px-4 text-left">Kode & Nama Toko</th>
+                                <th class="py-3 px-3 text-center">Hari Aktif</th>
+                                <th class="py-3 px-3 text-right">Omset Rata-Rata</th>
+                                <th class="py-3 px-3 text-right">Total Omset</th>
+                                <th class="py-3 px-3 text-right text-emerald-400">Simpasan 7.5%</th>
+                                <th class="py-3 px-3 text-right text-purple-300">Total Belanja</th>
+                                <th class="py-3 px-3 text-right">Selisih</th>
+                                <th class="py-3 px-4 text-center">Aksi & Link Cabang</th>
+                            </tr>
+                        </thead>
+                        <tbody id="server-stores-tbody">
+                            <!-- Dynamic Store Summaries -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION C: MANAGE STORES TAB (Only in Central Mode) -->
+        <div id="view-manage" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div class="lg:col-span-4 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl">
+                <h3 id="manage-form-title" class="text-base font-bold text-white mb-1">Tambah Toko Cabang Baru</h3>
+                <p class="text-xs text-gray-400 mb-4">Setiap toko memiliki link khusus `#tk-01`, `#tk-02`, dst.</p>
+
+                <form onsubmit="handleSaveStoreForm(event)" class="space-y-3.5">
+                    <input type="hidden" id="manage-store-id" value="" />
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Kode Toko *</label>
+                        <input type="text" id="manage-code" placeholder="TK-01" required class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Nama Toko *</label>
+                        <input type="text" id="manage-name" placeholder="Toko Cabang Barat" required class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Alamat / Lokasi</label>
+                        <input type="text" id="manage-location" placeholder="Jl. Sudirman No. 45" class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">PIC / Penanggung Jawab</label>
+                        <input type="text" id="manage-manager" placeholder="Nama Kepala Toko" class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div class="flex items-center gap-2 pt-1">
+                        <button type="submit" class="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 text-xs shadow transition cursor-pointer">
+                            Simpan Toko
+                        </button>
+                        <button type="button" onclick="resetManageForm()" class="rounded-xl bg-[#141419] hover:bg-[#1f1f26] text-gray-300 border border-[#222228] font-semibold py-2 px-3 text-xs cursor-pointer">
+                            Batal
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="lg:col-span-8 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-4">
+                <div>
+                    <h3 class="text-base font-bold text-white">Daftar Toko & Link Masing-Masing</h3>
+                    <p class="text-xs text-gray-400">Salin link khusus cabang untuk dikirimkan ke kasir/PIC toko. Saat dibuka lewat link tersebut, tampilannya <b>murni hanya Buku Toko cabang itu saja</b>.</p>
+                </div>
+                <div id="manage-store-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Dynamic Store Cards -->
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-[#222228] bg-black py-4 px-4 sm:px-6 text-xs text-gray-500">
+        <div class="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span id="footer-text">Server Pusat Multi-Toko</span>
+            <span>Skema Simpasan: 7.5% • 7% • 6.5% • 6% Dari Omset</span>
+        </div>
+    </footer>
+
+    <!-- NATIVE JS LOGIC -->
+    <script>
+        // Error Handler Guardrail
+        window.onerror = function(msg, url, line) {
+            document.getElementById('error-banner').classList.remove('hidden');
+            document.getElementById('error-msg').innerText = "Catatan Sistem: " + msg + " (Baris " + line + ")";
+            return false;
+        };
+
+        const LOCAL_STORAGE_KEY = 'multi_toko_native_db_v3';
+        const FIREBASE_URL_KEY = 'multi_toko_fb_url_v3';
+        const BROADCAST_CHANNEL_NAME = 'multi_toko_channel_native_v3';
+        const DEFAULT_DATE = '2026-11-20';
 
         const DEFAULT_STORES = [
             { id: 'toko-1', code: 'TK-01', name: 'Toko Pusat Utama', location: 'Jl. Merdeka No. 1', manager: 'Admin Server' },
@@ -62,105 +530,28 @@
 
         const DAYS_ID = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
 
-        function getTodayISO() {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const d = String(now.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        }
-
-        function getHariName(isoDateStr) {
-            const targetISO = isoDateStr || getTodayISO();
-            const parts = targetISO.split('-');
-            if (parts.length !== 3) return DAYS_ID[new Date().getDay()];
+        function addDays(isoStr, n) {
+            const parts = isoStr.split('-');
             const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            if (Number.isNaN(dt.getTime())) return DAYS_ID[new Date().getDay()];
-            return DAYS_ID[dt.getDay()];
-        }
-
-        function formatDisplayDate(isoDateStr) {
-            const targetISO = isoDateStr || getTodayISO();
-            const parts = targetISO.split('-');
-            if (parts.length !== 3) return targetISO;
-            return `${parts[2]}/${parts[1]}/${parts[0]}`;
-        }
-
-        function addDaysISO(isoDateStr, deltaDays) {
-            const parts = isoDateStr.split('-');
-            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            dt.setDate(dt.getDate() + deltaDays);
+            dt.setDate(dt.getDate() + n);
             const y = dt.getFullYear();
             const m = String(dt.getMonth() + 1).padStart(2, '0');
             const d = String(dt.getDate()).padStart(2, '0');
             return `${y}-${m}-${d}`;
         }
 
-        function formatRupiah(amount) {
-            const num = Number(amount) || 0;
-            const isNegative = num < 0;
-            const absVal = Math.abs(num);
-            const hasFraction = Math.abs(absVal - Math.round(absVal)) > 0.001;
-            const formatted = new Intl.NumberFormat('id-ID', {
-                minimumFractionDigits: hasFraction ? 1 : 0,
-                maximumFractionDigits: hasFraction ? 1 : 0
-            }).format(absVal);
-            return `${isNegative ? '-' : ''}Rp${formatted}`;
+        function getHariName(isoStr) {
+            if (!isoStr) return 'senin';
+            const parts = isoStr.split('-');
+            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            return DAYS_ID[dt.getDay()] || 'senin';
         }
 
-        function formatAvgRupiah(amount) {
-            const num = Number(amount) || 0;
-            const isNegative = num < 0;
-            const absVal = Math.abs(num);
-            const rounded = Math.round(absVal);
-            const formatted = new Intl.NumberFormat('id-ID', {
-                maximumFractionDigits: 0
-            }).format(rounded);
-            return `${isNegative ? '-' : ''}Rp${formatted}`;
-        }
-
-        function computeSimpasan(omzet) {
-            const val = Math.max(0, Number(omzet) || 0);
-            return {
-                s75: val * 0.075,
-                s70: val * 0.070,
-                s65: val * 0.065,
-                s60: val * 0.060
-            };
-        }
-
-        function computeRowPercent(row) {
-            if (!row) return 0;
-            if (row.customPercent !== '' && row.customPercent !== undefined && row.customPercent !== null) {
-                const parsed = Number(row.customPercent);
-                if (!Number.isNaN(parsed)) return Math.max(0, Math.min(100, Math.round(parsed)));
-            }
-            const omzet = Math.max(0, Number(row.omzet) || 0);
-            const belanja = Math.max(0, Number(row.belanja) || 0);
-            if (omzet <= 0) return 0;
-            return Math.max(0, Math.min(100, Math.round((belanja / omzet) * 100)));
-        }
-
-        function getStoreSlug(code) {
-            const clean = (code || 'TK-01').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
-            return `#${clean}`;
-        }
-
-        function getFullStoreUrl(code) {
-            const hash = getStoreSlug(code);
-            try {
-                const base = window.location.href.split('#')[0];
-                return `${base}${hash}`;
-            } catch (e) {
-                return hash;
-            }
-        }
-
-        function buildEmptyRows(endDateISO = getTodayISO(), totalDays = 22) {
-            const startISO = addDaysISO(endDateISO, -(totalDays - 1));
+        function buildEmptyRows(endDateISO = DEFAULT_DATE, totalDays = 22) {
+            const startISO = addDays(endDateISO, -(totalDays - 1));
             const rows = [];
             for (let i = 0; i < totalDays; i++) {
-                const dateStr = addDaysISO(startISO, i);
+                const dateStr = addDays(startISO, i);
                 rows.push({
                     id: `row-${i + 1}-${dateStr}`,
                     no: i + 1,
@@ -174,1604 +565,776 @@
             return rows;
         }
 
-        function buildInitialTransactions(storeList, endDateISO = getTodayISO()) {
+        function buildInitialTxMap(storeList) {
             const map = {};
-            storeList.forEach((st) => {
-                map[st.id] = buildEmptyRows(endDateISO, 22);
+            storeList.forEach(st => {
+                map[st.id] = buildEmptyRows(DEFAULT_DATE, 22);
             });
             return map;
         }
 
-        // Shared Memory Fallback
-        window.__MULTI_TOKO_GLOBAL_STATE__ = window.__MULTI_TOKO_GLOBAL_STATE__ || {
+        // Global State Container
+        let appState = {
             stores: DEFAULT_STORES,
-            transactions: null,
-            logs: [],
+            transactions: buildInitialTxMap(DEFAULT_STORES),
+            logs: [{ id: '1', time: new Date().toLocaleTimeString('id-ID'), message: 'Sistem Multi-Toko Siap' }],
             updatedAt: Date.now()
         };
 
-        function loadLocalDB() {
+        let activeStoreId = 'toko-1';
+        let currentServerTab = 'dashboard';
+        let isBranchMode = false;
+        let firebaseDbUrl = '';
+        let broadcastChannel = null;
+        let eventSource = null;
+
+        // Number Formatters
+        function formatRupiah(val) {
+            const num = Number(val) || 0;
+            const isNeg = num < 0;
+            const abs = Math.abs(num);
+            const hasFrac = Math.abs(abs - Math.round(abs)) > 0.001;
+            const formatted = new Intl.NumberFormat('id-ID', {
+                minimumFractionDigits: hasFrac ? 1 : 0,
+                maximumFractionDigits: hasFrac ? 1 : 0
+            }).format(abs);
+            return (isNeg ? '-' : '') + 'Rp' + formatted;
+        }
+
+        function formatAvgRupiah(val) {
+            const num = Math.round(Math.abs(Number(val) || 0));
+            const formatted = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(num);
+            return (Number(val) < 0 ? '-' : '') + 'Rp' + formatted;
+        }
+
+        function computeSimpasan(omzet) {
+            const o = Math.max(0, Number(omzet) || 0);
+            return {
+                s75: o * 0.075,
+                s70: o * 0.070,
+                s65: o * 0.065,
+                s60: o * 0.060
+            };
+        }
+
+        function computeRowPercent(r) {
+            if (r.customPercent !== '' && r.customPercent !== undefined && r.customPercent !== null) {
+                const parsed = Number(r.customPercent);
+                if (!isNaN(parsed)) return Math.max(0, Math.min(100, Math.round(parsed)));
+            }
+            const o = Math.max(0, Number(r.omzet) || 0);
+            const b = Math.max(0, Number(r.belanja) || 0);
+            if (o <= 0) return 0;
+            return Math.max(0, Math.min(100, Math.round((b / o) * 100)));
+        }
+
+        function getSlug(code) {
+            return '#' + (code || 'TK-01').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
+        }
+
+        function getFullStoreUrl(code) {
+            const hash = getSlug(code);
             try {
-                const raw = localStorage.getItem(LOCAL_STORAGE_DB_KEY);
+                return window.location.href.split('#')[0] + hash;
+            } catch (e) {
+                return hash;
+            }
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.remove('hidden');
+            setTimeout(() => t.classList.add('hidden'), 3000);
+        }
+
+        function triggerPulse(text = 'Lokal') {
+            const badge = document.getElementById('sync-status-badge');
+            const dot = document.getElementById('sync-dot');
+            const syncText = document.getElementById('sync-text');
+            const syncTime = document.getElementById('sync-time');
+
+            syncTime.innerText = new Date().toLocaleTimeString('id-ID');
+            syncText.innerText = text;
+            
+            badge.classList.add('bg-amber-500/20', 'border-amber-500/40');
+            dot.classList.add('animate-ping', 'bg-amber-400');
+
+            setTimeout(() => {
+                badge.classList.remove('bg-amber-500/20', 'border-amber-500/40');
+                dot.classList.remove('animate-ping', 'bg-amber-400');
+            }, 800);
+        }
+
+        // Persistence & Save Function
+        function saveAppState(logMsg = '') {
+            appState.updatedAt = Date.now();
+            if (logMsg) {
+                const entry = {
+                    id: Date.now().toString(),
+                    time: new Date().toLocaleTimeString('id-ID'),
+                    message: logMsg
+                };
+                appState.logs = [entry, ...(appState.logs || [])].slice(0, 25);
+            }
+
+            // LocalStorage
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appState));
+            } catch (e) {}
+
+            // BroadcastChannel
+            if (broadcastChannel) {
+                try {
+                    broadcastChannel.postMessage(appState);
+                } catch (e) {}
+            }
+
+            // Firebase Cloud Push
+            if (firebaseDbUrl) {
+                try {
+                    const cleanUrl = firebaseDbUrl.replace(/\/+$/, '');
+                    fetch(`${cleanUrl}/multi_toko_live.json`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(appState)
+                    }).catch(err => console.warn('Firebase sync error:', err));
+                } catch (e) {}
+            }
+
+            triggerPulse(firebaseDbUrl ? 'Cloud Live' : 'Lokal');
+            renderAllViews();
+        }
+
+        function loadLocalState() {
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (parsed && Array.isArray(parsed.stores)) {
-                        window.__MULTI_TOKO_GLOBAL_STATE__ = parsed;
-                        return parsed;
+                        appState = parsed;
                     }
                 }
             } catch (e) {}
-            return window.__MULTI_TOKO_GLOBAL_STATE__;
+
+            try {
+                const urlRaw = localStorage.getItem(FIREBASE_URL_KEY);
+                if (urlRaw) firebaseDbUrl = urlRaw;
+            } catch (e) {}
         }
 
-        function App() {
-            const [stores, setStores] = useState(() => {
-                const db = loadLocalDB();
-                return Array.isArray(db.stores) && db.stores.length > 0 ? db.stores : DEFAULT_STORES;
-            });
+        // Routing & Hash Detection
+        function detectRouting() {
+            const rawHash = (window.location.hash || '').toLowerCase().trim();
+            isBranchMode = Boolean(rawHash && rawHash !== '#');
 
-            const [transactionsMap, setTransactionsMap] = useState(() => {
-                const db = loadLocalDB();
-                if (db.transactions && typeof db.transactions === 'object' && Object.keys(db.transactions).length > 0) {
-                    return db.transactions;
+            const headerBadge = document.getElementById('header-badge');
+            const headerTitle = document.getElementById('header-title');
+            const headerSub = document.getElementById('header-sub');
+            const serverNavTabs = document.getElementById('server-nav-tabs');
+            const storeSelectorWrap = document.getElementById('store-selector-wrapper');
+            const footerText = document.getElementById('footer-text');
+
+            if (isBranchMode) {
+                const cleanHash = rawHash.replace(/^#/, '');
+                const matched = appState.stores.find(s => 
+                    s.code.toLowerCase() === cleanHash ||
+                    s.id.toLowerCase() === cleanHash ||
+                    s.code.toLowerCase().replace(/[^a-z0-9-]/g, '-') === cleanHash
+                );
+                if (matched) {
+                    activeStoreId = matched.id;
+                } else if (appState.stores.length > 0) {
+                    activeStoreId = appState.stores[0].id;
                 }
-                return buildInitialTransactions(DEFAULT_STORES, getTodayISO());
-            });
 
-            const [logs, setLogs] = useState(() => {
-                const db = loadLocalDB();
-                return Array.isArray(db.logs) ? db.logs : [];
-            });
+                const currentStore = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+                headerBadge.className = "w-10 h-10 rounded-xl bg-emerald-500 text-black flex items-center justify-center font-black text-sm shadow-lg shadow-emerald-500/20";
+                headerBadge.innerText = currentStore.code;
+                headerTitle.innerText = `Buku Toko — ${currentStore.name}`;
+                headerSub.innerText = `Cabang ${currentStore.code} • ${currentStore.location} • PIC: ${currentStore.manager}`;
+                footerText.innerText = `Buku Toko Cabang — ${currentStore.code} (${currentStore.name})`;
 
-            // Firebase Cloud Configuration State
-            const [firebaseConfig, setFirebaseConfig] = useState(() => {
-                try {
-                    const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
-                    if (raw) return JSON.parse(raw);
-                } catch (e) {}
-                return { dbUrl: '', roomId: 'multi_toko_default' };
-            });
+                serverNavTabs.classList.add('hidden');
+                storeSelectorWrap.classList.add('hidden');
 
-            const [showFirebaseModal, setShowFirebaseModal] = useState(false);
-            const [isCloudConnected, setIsCloudConnected] = useState(false);
+                document.getElementById('view-ledger').classList.remove('hidden');
+                document.getElementById('view-dashboard').classList.add('hidden');
+                document.getElementById('view-manage').classList.add('hidden');
+            } else {
+                headerBadge.className = "w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg shadow-blue-600/20";
+                headerBadge.innerText = "SRV";
+                headerTitle.innerText = "Server Pusat Multi-Toko";
+                headerSub.innerText = `Pantau & Kelola (${appState.stores.length} Cabang Toko)`;
+                footerText.innerText = "Server Pusat Multi-Toko • Pemantauan Real-Time";
 
-            // Hash detection for branch isolation
-            const [urlHash, setUrlHash] = useState(() => (window.location.hash || '').toLowerCase().trim());
-            const isBranchMode = useMemo(() => Boolean(urlHash && urlHash !== '#'), [urlHash]);
+                serverNavTabs.classList.remove('hidden');
+                storeSelectorWrap.classList.remove('hidden');
+                storeSelectorWrap.classList.add('flex');
 
-            // Resolve active store from hash or selection
-            const [selectedStoreId, setSelectedStoreId] = useState(() => DEFAULT_STORES[0].id);
-            
-            const activeStoreId = useMemo(() => {
-                if (isBranchMode) {
-                    const cleanHash = urlHash.replace(/^#/, '');
-                    const matched = stores.find(
-                        s => s.code.toLowerCase() === cleanHash ||
-                             s.id.toLowerCase() === cleanHash ||
-                             s.code.toLowerCase().replace(/[^a-z0-9-]/g, '-') === cleanHash
-                    );
-                    if (matched) return matched.id;
+                switchServerTab(currentServerTab);
+            }
+
+            renderAllViews();
+        }
+
+        function switchServerTab(tab) {
+            currentServerTab = tab;
+            document.getElementById('tab-btn-dashboard').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'dashboard' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
+            document.getElementById('tab-btn-ledger').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'ledger' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
+            document.getElementById('tab-btn-manage').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'manage' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
+
+            document.getElementById('view-dashboard').classList.toggle('hidden', tab !== 'dashboard');
+            document.getElementById('view-ledger').classList.toggle('hidden', tab !== 'ledger');
+            document.getElementById('view-manage').classList.toggle('hidden', tab !== 'manage');
+
+            renderAllViews();
+        }
+
+        function handleSelectStore(stId) {
+            activeStoreId = stId;
+            renderAllViews();
+        }
+
+        // Render Functions
+        function renderAllViews() {
+            renderStoreSelector();
+            renderLedgerView();
+            if (!isBranchMode) {
+                renderServerDashboard();
+                renderManageStoresView();
+            }
+        }
+
+        function renderStoreSelector() {
+            const select = document.getElementById('store-selector');
+            select.innerHTML = appState.stores.map(s => 
+                `<option value="${s.id}" class="bg-black text-white" ${s.id === activeStoreId ? 'selected' : ''}>${s.code} — ${s.name}</option>`
+            ).join('');
+        }
+
+        function renderLedgerView() {
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0] || DEFAULT_STORES[0];
+            if (!store) return;
+
+            document.getElementById('branch-badge-code').innerText = store.code;
+            document.getElementById('branch-store-name').innerText = store.name;
+            document.getElementById('branch-store-meta').innerText = `Lokasi: ${store.location} • PIC: ${store.manager}`;
+
+            const rows = appState.transactions[store.id] || [];
+            const query = (document.getElementById('search-ledger').value || '').toLowerCase().trim();
+
+            let totalOmzet = 0;
+            let totalBelanja = 0;
+            let totalS75 = 0, totalS70 = 0, totalS65 = 0, totalS60 = 0;
+            let activeDaysCount = 0;
+            let pctSum = 0;
+
+            const tbody = document.getElementById('ledger-tbody');
+            tbody.innerHTML = '';
+
+            rows.forEach((r, idx) => {
+                const omz = Math.max(0, Number(r.omzet) || 0);
+                const blj = Math.max(0, Number(r.belanja) || 0);
+                const sim = computeSimpasan(omz);
+                const pct = computeRowPercent(r);
+
+                totalOmzet += omz;
+                totalBelanja += blj;
+                totalS75 += sim.s75;
+                totalS70 += sim.s70;
+                totalS65 += sim.s65;
+                totalS60 += sim.s60;
+                pctSum += pct;
+                if (omz > 0 || blj > 0) activeDaysCount += 1;
+
+                // Search Filter
+                if (query) {
+                    const dStr = (r.date || '').toLowerCase();
+                    const dayStr = (r.day || '').toLowerCase();
+                    if (!dStr.includes(query) && !dayStr.includes(query)) return;
                 }
-                return selectedStoreId;
-            }, [isBranchMode, urlHash, stores, selectedStoreId]);
 
-            const activeStore = useMemo(() => {
-                return stores.find(s => s.id === activeStoreId) || stores[0] || DEFAULT_STORES[0];
-            }, [stores, activeStoreId]);
+                const tr = document.createElement('tr');
+                tr.className = `border-b border-[#222228]/80 transition ${omz > 0 || blj > 0 ? 'bg-[#141419]/60' : 'bg-black'}`;
+                tr.innerHTML = `
+                    <td class="py-1.5 px-2 border-r border-[#222228] text-center font-semibold text-gray-400">${r.no || (idx + 1)}</td>
+                    <td class="py-1.5 px-2 border-r border-[#222228] text-left">
+                        <input type="date" value="${r.date || ''}" onchange="handleInlineCellEdit('${r.id}', 'date', this.value)" class="table-input text-blue-400 font-medium" />
+                    </td>
+                    <td class="py-1.5 px-2.5 border-r border-[#222228] text-left text-gray-300 capitalize">${r.day || getHariName(r.date)}</td>
+                    <td class="py-1.5 px-2 border-r border-[#222228] text-right">
+                        <input type="number" min="0" step="any" value="${omz === 0 ? '' : omz}" placeholder="0" onchange="handleInlineCellEdit('${r.id}', 'omzet', this.value)" class="table-input text-right font-semibold text-white" />
+                    </td>
+                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-emerald-500/90 text-black">${formatRupiah(sim.s75)}</td>
+                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-amber-400/90 text-black">${formatRupiah(sim.s70)}</td>
+                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-amber-500/90 text-black">${formatRupiah(sim.s65)}</td>
+                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-rose-500/90 text-white">${formatRupiah(sim.s60)}</td>
+                    <td class="py-1.5 px-2 border-r border-[#222228] text-right">
+                        <input type="number" min="0" step="any" value="${blj === 0 ? '' : blj}" placeholder="0" onchange="handleInlineCellEdit('${r.id}', 'belanja', this.value)" class="table-input text-right text-gray-200" />
+                    </td>
+                    <td class="py-1.5 px-2 border-r border-[#222228] text-center font-semibold text-gray-300">${pct}%</td>
+                    <td class="py-1.5 px-2 text-center whitespace-nowrap">
+                        <button onclick="handleClearRow('${r.id}')" title="Kosongkan" class="px-2 py-0.5 rounded bg-[#222228] hover:bg-[#33333e] text-gray-200 text-[10px] font-semibold mr-1 cursor-pointer">0</button>
+                        <button onclick="handleDeleteRow('${r.id}')" title="Hapus" class="px-2 py-0.5 rounded bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-[10px] font-semibold cursor-pointer">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
 
-            const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'ledger' | 'manage'
-            const [searchQuery, setSearchQuery] = useState('');
-            const [onlyActiveDays, setOnlyActiveDays] = useState(false);
+            const avgOmz = activeDaysCount > 0 ? totalOmzet / activeDaysCount : 0;
+            const avgS75 = activeDaysCount > 0 ? totalS75 / activeDaysCount : 0;
+            const avgS70 = activeDaysCount > 0 ? totalS70 / activeDaysCount : 0;
+            const avgS65 = activeDaysCount > 0 ? totalS65 / activeDaysCount : 0;
+            const avgS60 = activeDaysCount > 0 ? totalS60 / activeDaysCount : 0;
+            const avgPct = rows.length > 0 ? Math.round(pctSum / rows.length) : 0;
+            const netDiff = totalOmzet - totalBelanja - totalS75;
 
-            // Toast & Sync Indicators
-            const [toast, setToast] = useState('');
-            const [lastSyncTime, setLastSyncTime] = useState(() => new Date().toLocaleTimeString('id-ID'));
-            const [syncPulse, setSyncPulse] = useState(false);
+            // Update KPI
+            document.getElementById('kpi-avg-omzet').innerText = formatAvgRupiah(avgOmz);
+            document.getElementById('kpi-active-days').innerText = `Hari aktif: ${activeDaysCount} / ${rows.length} hari`;
+            document.getElementById('kpi-total-omzet').innerText = formatRupiah(totalOmzet);
+            document.getElementById('kpi-total-s75').innerText = formatRupiah(totalS75);
+            document.getElementById('kpi-avg-s75').innerText = `Rata-rata: ${formatAvgRupiah(avgS75)}`;
+            document.getElementById('kpi-total-belanja').innerText = formatRupiah(totalBelanja);
+            document.getElementById('kpi-net-diff').innerText = `Selisih Bersih: ${formatRupiah(netDiff)}`;
+            document.getElementById('kpi-net-diff').className = `text-xs font-bold mt-1 ${netDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
 
-            // Form States for Form Input & Store Management
-            const [newDate, setNewDate] = useState(getTodayISO());
-            const [newOmzet, setNewOmzet] = useState('');
-            const [newBelanja, setNewBelanja] = useState('');
-            const [newPercent, setNewPercent] = useState('');
+            // Update Footer Table
+            document.getElementById('foot-s75').innerText = formatRupiah(totalS75);
+            document.getElementById('foot-s70').innerText = formatRupiah(totalS70);
+            document.getElementById('foot-s65').innerText = formatRupiah(totalS65);
+            document.getElementById('foot-s60').innerText = formatRupiah(totalS60);
+            document.getElementById('foot-belanja').innerText = formatRupiah(totalBelanja);
+            document.getElementById('foot-pct').innerText = avgPct + '%';
+            document.getElementById('foot-days').innerText = activeDaysCount + ' hr';
 
-            const [editingStoreId, setEditingStoreId] = useState(null);
-            const [editCode, setEditCode] = useState('');
-            const [editName, setEditName] = useState('');
-            const [editLocation, setEditLocation] = useState('');
-            const [editManager, setEditManager] = useState('');
+            // Update Rekap Table
+            document.getElementById('rekap-avg-s75').innerText = formatAvgRupiah(avgS75);
+            document.getElementById('rekap-avg-s70').innerText = formatAvgRupiah(avgS70);
+            document.getElementById('rekap-avg-s65').innerText = formatAvgRupiah(avgS65);
+            document.getElementById('rekap-avg-s60').innerText = formatAvgRupiah(avgS60);
 
-            const chartCanvasRef = useRef(null);
-            const chartInstanceRef = useRef(null);
-            const broadcastRef = useRef(null);
-            const eventSourceRef = useRef(null);
+            document.getElementById('rekap-days-1').innerText = activeDaysCount;
+            document.getElementById('rekap-days-2').innerText = activeDaysCount;
+            document.getElementById('rekap-days-3').innerText = activeDaysCount;
+            document.getElementById('rekap-days-4').innerText = activeDaysCount;
 
-            // Listen to Hash Changes dynamically
-            useEffect(() => {
-                const onHashChange = () => {
-                    setUrlHash((window.location.hash || '').toLowerCase().trim());
-                };
-                window.addEventListener('hashchange', onHashChange);
-                return () => window.removeEventListener('hashchange', onHashChange);
-            }, []);
+            document.getElementById('rekap-total-s75').innerText = formatRupiah(totalS75);
+            document.getElementById('rekap-total-s70').innerText = formatRupiah(totalS70);
+            document.getElementById('rekap-total-s65').innerText = formatRupiah(totalS65);
+            document.getElementById('rekap-total-s60').innerText = formatRupiah(totalS60);
 
-            const showToastMsg = (msg) => {
-                setToast(msg);
-                setTimeout(() => setToast((prev) => (prev === msg ? '' : prev)), 3200);
+            // Update Side Summary
+            document.getElementById('side-total-omzet').innerText = formatRupiah(totalOmzet);
+            document.getElementById('side-avg-omzet').innerText = formatAvgRupiah(avgOmz);
+            document.getElementById('side-total-belanja').innerText = formatRupiah(totalBelanja);
+            document.getElementById('side-net-omzet').innerText = formatRupiah(totalOmzet - totalS75);
+        }
+
+        function renderServerDashboard() {
+            let grandOmzet = 0;
+            let grandS75 = 0;
+            let grandBelanja = 0;
+            let grandDays = 0;
+
+            const tbody = document.getElementById('server-stores-tbody');
+            tbody.innerHTML = '';
+
+            appState.stores.forEach(st => {
+                const rows = appState.transactions[st.id] || [];
+                let storeOmzet = 0;
+                let storeBelanja = 0;
+                let storeS75 = 0;
+                let storeActiveDays = 0;
+
+                rows.forEach(r => {
+                    const o = Math.max(0, Number(r.omzet) || 0);
+                    const b = Math.max(0, Number(r.belanja) || 0);
+                    const sim = computeSimpasan(o);
+                    storeOmzet += o;
+                    storeBelanja += b;
+                    storeS75 += sim.s75;
+                    if (o > 0 || b > 0) storeActiveDays += 1;
+                });
+
+                const avgOmzet = storeActiveDays > 0 ? storeOmzet / storeActiveDays : 0;
+                const net = storeOmzet - storeBelanja - storeS75;
+
+                grandOmzet += storeOmzet;
+                grandS75 += storeS75;
+                grandBelanja += storeBelanja;
+                grandDays += storeActiveDays;
+
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-[#222228]/80 hover:bg-[#141419]/60";
+                tr.innerHTML = `
+                    <td class="py-3 px-4">
+                        <div class="font-bold text-white">${st.code} — ${st.name}</div>
+                        <div class="text-[11px] text-gray-400">${st.location} • PIC: ${st.manager}</div>
+                    </td>
+                    <td class="py-3 px-3 text-center font-semibold text-gray-300">${storeActiveDays} hr</td>
+                    <td class="py-3 px-3 text-right font-semibold text-blue-400">${formatAvgRupiah(avgOmzet)}</td>
+                    <td class="py-3 px-3 text-right font-bold text-white">${formatRupiah(storeOmzet)}</td>
+                    <td class="py-3 px-3 text-right font-semibold text-emerald-400">${formatRupiah(storeS75)}</td>
+                    <td class="py-3 px-3 text-right font-semibold text-purple-300">${formatRupiah(storeBelanja)}</td>
+                    <td class="py-3 px-3 text-right font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatRupiah(net)}</td>
+                    <td class="py-3 px-4 text-center space-x-1.5 whitespace-nowrap">
+                        <button onclick="inspectStore('${st.id}')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">Pantau Buku</button>
+                        <button onclick="copyStoreLink('${st.code}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-semibold cursor-pointer">Salin Link (${getSlug(st.code)})</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const grandNet = grandOmzet - grandBelanja - grandS75;
+            document.getElementById('srv-grand-omzet').innerText = formatRupiah(grandOmzet);
+            document.getElementById('srv-grand-stores').innerText = `Dari ${appState.stores.length} cabang aktif`;
+            document.getElementById('srv-grand-s75').innerText = formatRupiah(grandS75);
+            document.getElementById('srv-grand-belanja').innerText = formatRupiah(grandBelanja);
+            document.getElementById('srv-grand-days').innerText = `Total hari aktif: ${grandDays} hr`;
+            document.getElementById('srv-grand-net').innerText = formatRupiah(grandNet);
+            document.getElementById('srv-grand-net').className = `text-2xl font-extrabold mt-1 ${grandNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+            // Render Logs
+            const logsList = document.getElementById('server-logs-list');
+            logsList.innerHTML = (appState.logs || []).map(l => `
+                <li class="flex items-center justify-between gap-3 bg-black border border-[#222228] rounded-xl px-3 py-1.5">
+                    <span class="text-gray-200">${l.message}</span>
+                    <span class="text-gray-500 font-mono text-[11px]">${l.time}</span>
+                </li>
+            `).join('');
+        }
+
+        function renderManageStoresView() {
+            const container = document.getElementById('manage-store-cards');
+            container.innerHTML = appState.stores.map(st => {
+                const slug = getSlug(st.code);
+                return `
+                    <div class="rounded-2xl border border-[#222228] bg-black p-4 space-y-3">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="px-2 py-0.5 rounded bg-[#141419] border border-[#222228] text-blue-400 text-xs font-bold">${st.code}</span>
+                                    <h4 class="text-sm font-bold text-white">${st.name}</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">${st.location}</p>
+                                <p class="text-xs text-gray-400">PIC: ${st.manager}</p>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-[#0d0d10] border border-[#222228] text-xs font-mono text-blue-400 flex items-center justify-between">
+                            <span>${slug}</span>
+                            <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Akses Murni Cabang</span>
+                        </div>
+
+                        <div class="pt-2 border-t border-[#222228] flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="inspectStore('${st.id}')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">Buka Buku</button>
+                                <button onclick="copyStoreLink('${st.code}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-medium cursor-pointer">Salin Link</button>
+                                <button onclick="editStore('${st.id}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-medium cursor-pointer">Edit</button>
+                            </div>
+                            <button onclick="deleteStore('${st.id}')" class="px-2.5 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-xs font-medium cursor-pointer">Hapus</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Ledger Operations
+        function handleInlineCellEdit(rowId, field, val) {
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+            const rows = appState.transactions[store.id] || [];
+            const updated = rows.map(r => {
+                if (r.id !== rowId) return r;
+                if (field === 'date') return { ...r, date: val, day: getHariName(val) };
+                if (field === 'omzet' || field === 'belanja') return { ...r, [field]: val === '' ? 0 : Math.max(0, Number(val) || 0) };
+                return { ...r, [field]: val };
+            });
+
+            appState.transactions[store.id] = updated;
+            saveAppState(`${store.code} ubah ${field}`);
+        }
+
+        function handleFormInputSubmit(e) {
+            e.preventDefault();
+            const dateVal = document.getElementById('input-form-date').value || DEFAULT_DATE;
+            const omzVal = Math.max(0, Number(document.getElementById('input-form-omzet').value) || 0);
+            const bljVal = Math.max(0, Number(document.getElementById('input-form-belanja').value) || 0);
+            const pctVal = document.getElementById('input-form-percent').value;
+
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+            const rows = appState.transactions[store.id] || [];
+            const idx = rows.findIndex(r => r.date === dateVal);
+
+            let updatedRows = [];
+            if (idx >= 0) {
+                updatedRows = rows.map((r, i) => i === idx ? { ...r, day: getHariName(dateVal), omzet: omzVal, belanja: bljVal, customPercent: pctVal } : r);
+            } else {
+                updatedRows = [...rows, {
+                    id: `row-${Date.now()}`,
+                    no: rows.length + 1,
+                    date: dateVal,
+                    day: getHariName(dateVal),
+                    omzet: omzVal,
+                    belanja: bljVal,
+                    customPercent: pctVal
+                }];
+            }
+
+            appState.transactions[store.id] = updatedRows;
+            saveAppState(`${store.code} input ${dateVal}: Omset ${formatRupiah(omzVal)}`);
+
+            document.getElementById('input-form-omzet').value = '';
+            document.getElementById('input-form-belanja').value = '';
+            document.getElementById('input-form-percent').value = '';
+            showToast(`Data ${dateVal} tersimpan.`);
+        }
+
+        function handleAddNewDateRow() {
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+            const rows = appState.transactions[store.id] || [];
+            const lastRow = rows[rows.length - 1];
+            const nextDate = lastRow && lastRow.date ? addDays(lastRow.date, 1) : DEFAULT_DATE;
+
+            const newRow = {
+                id: `row-${Date.now()}`,
+                no: rows.length + 1,
+                date: nextDate,
+                day: getHariName(nextDate),
+                omzet: 0,
+                belanja: 0,
+                customPercent: ''
             };
 
-            const triggerPulse = () => {
-                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-                setSyncPulse(true);
-                setTimeout(() => setSyncPulse(false), 900);
-            };
+            appState.transactions[store.id] = [...rows, newRow];
+            saveAppState(`${store.code} tambah tanggal ${nextDate}`);
+            showToast(`Baris tanggal ${nextDate} ditambahkan.`);
+        }
 
-            // Save to Local + Broadcast + Firebase Cloud
-            const saveState = (newStores, newTxMap, logMessage = '') => {
-                const now = Date.now();
-                let updatedLogs = logs;
+        function handleClearRow(rowId) {
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+            const rows = appState.transactions[store.id] || [];
+            const updated = rows.map(r => r.id === rowId ? { ...r, omzet: 0, belanja: 0, customPercent: '' } : r);
+            appState.transactions[store.id] = updated;
+            saveAppState(`${store.code} kosongkan baris`);
+        }
 
-                if (logMessage) {
-                    const entry = {
-                        id: `${now}-${Math.random().toString(36).substring(2, 6)}`,
-                        time: new Date().toLocaleTimeString('id-ID'),
-                        message: logMessage
-                    };
-                    updatedLogs = [entry, ...logs].slice(0, 30);
-                }
+        function handleDeleteRow(rowId) {
+            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
+            const rows = appState.transactions[store.id] || [];
+            if (rows.length <= 1) {
+                handleClearRow(rowId);
+                return;
+            }
+            const updated = rows.filter(r => r.id !== rowId).map((r, i) => ({ ...r, no: i + 1 }));
+            appState.transactions[store.id] = updated;
+            saveAppState(`${store.code} hapus baris`);
+        }
 
-                const fullPayload = {
-                    stores: newStores || stores,
-                    transactions: newTxMap || transactionsMap,
-                    logs: updatedLogs,
-                    updatedAt: now
-                };
+        // Store Management Operations
+        function inspectStore(stId) {
+            activeStoreId = stId;
+            if (!isBranchMode) {
+                switchServerTab('ledger');
+            } else {
+                renderAllViews();
+            }
+        }
 
-                window.__MULTI_TOKO_GLOBAL_STATE__ = fullPayload;
-                setStores(fullPayload.stores);
-                setTransactionsMap(fullPayload.transactions);
-                setLogs(fullPayload.logs);
-                triggerPulse();
+        function copyStoreLink(code) {
+            const fullUrl = getFullStoreUrl(code);
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = fullUrl;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast(`Link cabang ${code} disalin!`);
+            } catch (e) {
+                showToast(`Link: ${fullUrl}`);
+            }
+        }
 
+        function handleSaveStoreForm(e) {
+            e.preventDefault();
+            const stId = document.getElementById('manage-store-id').value;
+            const code = document.getElementById('manage-code').value.trim().toUpperCase();
+            const name = document.getElementById('manage-name').value.trim();
+            const loc = document.getElementById('manage-location').value.trim() || '-';
+            const mgr = document.getElementById('manage-manager').value.trim() || '-';
+
+            if (!code || !name) return;
+
+            if (stId) {
+                appState.stores = appState.stores.map(s => s.id === stId ? { ...s, code, name, location: loc, manager: mgr } : s);
+                saveAppState(`Update toko ${code}`);
+                showToast(`Toko ${code} diperbarui.`);
+            } else {
+                const newId = `toko-${Date.now()}`;
+                appState.stores.push({ id: newId, code, name, location: loc, manager: mgr });
+                appState.transactions[newId] = buildEmptyRows(DEFAULT_DATE, 22);
+                saveAppState(`Tambah cabang ${code}`);
+                showToast(`Toko ${code} ditambahkan.`);
+            }
+
+            resetManageForm();
+        }
+
+        function editStore(stId) {
+            const st = appState.stores.find(s => s.id === stId);
+            if (!st) return;
+            document.getElementById('manage-store-id').value = st.id;
+            document.getElementById('manage-code').value = st.code;
+            document.getElementById('manage-name').value = st.name;
+            document.getElementById('manage-location').value = st.location === '-' ? '' : st.location;
+            document.getElementById('manage-manager').value = st.manager === '-' ? '' : st.manager;
+            document.getElementById('manage-form-title').innerText = "Edit Data Toko";
+        }
+
+        function resetManageForm() {
+            document.getElementById('manage-store-id').value = '';
+            document.getElementById('manage-code').value = '';
+            document.getElementById('manage-name').value = '';
+            document.getElementById('manage-location').value = '';
+            document.getElementById('manage-manager').value = '';
+            document.getElementById('manage-form-title').innerText = "Tambah Toko Cabang Baru";
+        }
+
+        function deleteStore(stId) {
+            if (appState.stores.length <= 1) {
+                showToast('Harus ada minimal 1 toko.');
+                return;
+            }
+            appState.stores = appState.stores.filter(s => s.id !== stId);
+            delete appState.transactions[stId];
+            saveAppState('Hapus toko');
+            showToast('Toko dihapus.');
+        }
+
+        // Firebase & JSON Sync Modals
+        function openFirebaseModal() {
+            document.getElementById('fb-url-input').value = firebaseDbUrl;
+            document.getElementById('modal-firebase').classList.remove('hidden');
+        }
+
+        function closeFirebaseModal() {
+            document.getElementById('modal-firebase').classList.add('hidden');
+        }
+
+        function saveFirebaseConfig() {
+            const url = document.getElementById('fb-url-input').value.trim();
+            firebaseDbUrl = url;
+            try {
+                localStorage.setItem(FIREBASE_URL_KEY, url);
+            } catch (e) {}
+
+            closeFirebaseModal();
+            setupFirebaseStream();
+            saveAppState('Konfigurasi Firebase diperbarui');
+            showToast(url ? 'Terhubung ke Firebase Realtime!' : 'Menggunakan mode lokal.');
+        }
+
+        function exportDataJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `multi_toko_backup_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importDataJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
                 try {
-                    localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(fullPayload));
-                } catch (e) {}
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed && Array.isArray(parsed.stores)) {
+                        appState = parsed;
+                        saveAppState('Restore data dari backup JSON');
+                        showToast('Restore data JSON berhasil!');
+                        closeFirebaseModal();
+                    }
+                } catch (err) {
+                    showToast('Format JSON tidak valid.');
+                }
+            };
+            reader.readAsText(file);
+        }
 
-                // BroadcastChannel
-                if (broadcastRef.current) {
+        // Realtime Synchronizer (BroadcastChannel + SSE Stream)
+        function initRealtimeEngines() {
+            // 1. BroadcastChannel
+            try {
+                broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+                broadcastChannel.onmessage = function(e) {
+                    if (e.data && e.data.updatedAt && e.data.updatedAt > appState.updatedAt) {
+                        appState = e.data;
+                        triggerPulse('Broadcast');
+                        renderAllViews();
+                    }
+                };
+            } catch (e) {}
+
+            // 2. Storage Event
+            window.addEventListener('storage', function(e) {
+                if (e.key === LOCAL_STORAGE_KEY) {
+                    loadLocalState();
+                    triggerPulse('Storage');
+                    renderAllViews();
+                }
+            });
+
+            // 3. Firebase SSE Stream
+            setupFirebaseStream();
+        }
+
+        function setupFirebaseStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            if (!firebaseDbUrl) return;
+
+            try {
+                const cleanUrl = firebaseDbUrl.replace(/\/+$/, '');
+                eventSource = new EventSource(`${cleanUrl}/multi_toko_live.json`);
+
+                eventSource.addEventListener('put', function(e) {
                     try {
-                        broadcastRef.current.postMessage(fullPayload);
-                    } catch (e) {}
-                }
-
-                // Push to Firebase Cloud if URL is provided
-                if (firebaseConfig.dbUrl) {
-                    try {
-                        const cleanUrl = firebaseConfig.dbUrl.replace(/\/+$/, '');
-                        const room = firebaseConfig.roomId || 'multi_toko_default';
-                        fetch(`${cleanUrl}/${room}.json`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(fullPayload)
-                        }).catch(err => console.warn('Firebase PUT err:', err));
-                    } catch (e) {}
-                }
-            };
-
-            // Setup Realtime Sync Engine (Firebase SSE + BroadcastChannel + Polling)
-            useEffect(() => {
-                let lastTs = 0;
-
-                const applyRemoteState = (remote) => {
-                    if (!remote || typeof remote !== 'object') return;
-                    if (remote.updatedAt && remote.updatedAt <= lastTs) return;
-                    lastTs = remote.updatedAt || Date.now();
-
-                    if (Array.isArray(remote.stores) && remote.stores.length > 0) {
-                        setStores(remote.stores);
-                    }
-                    if (remote.transactions && typeof remote.transactions === 'object') {
-                        setTransactionsMap(remote.transactions);
-                    }
-                    if (Array.isArray(remote.logs)) {
-                        setLogs(remote.logs);
-                    }
-                    triggerPulse();
-                };
-
-                // 1. Initial Local Load
-                applyRemoteState(loadLocalDB());
-
-                // 2. BroadcastChannel
-                try {
-                    const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-                    broadcastRef.current = bc;
-                    bc.onmessage = (ev) => {
-                        if (ev.data) applyRemoteState(ev.data);
-                    };
-                } catch (e) {}
-
-                // 3. Storage Event
-                const handleStorage = (e) => {
-                    if (e.key === LOCAL_STORAGE_DB_KEY) {
-                        applyRemoteState(loadLocalDB());
-                    }
-                };
-                window.addEventListener('storage', handleStorage);
-
-                // 4. Polling Fallback 500ms for memory check
-                const timer = setInterval(() => {
-                    const st = loadLocalDB();
-                    if (st && st.updatedAt > lastTs) {
-                        applyRemoteState(st);
-                    }
-                }, 500);
-
-                return () => {
-                    if (broadcastRef.current) broadcastRef.current.close();
-                    window.removeEventListener('storage', handleStorage);
-                    clearInterval(timer);
-                };
-            }, []);
-
-            // Setup Firebase SSE (Server-Sent Events) Stream if dbUrl set
-            useEffect(() => {
-                if (!firebaseConfig.dbUrl) {
-                    setIsCloudConnected(false);
-                    return;
-                }
-
-                let es = null;
-                try {
-                    const cleanUrl = firebaseConfig.dbUrl.replace(/\/+$/, '');
-                    const room = firebaseConfig.roomId || 'multi_toko_default';
-                    const streamUrl = `${cleanUrl}/${room}.json`;
-                    
-                    es = new EventSource(streamUrl);
-                    eventSourceRef.current = es;
-
-                    es.onopen = () => {
-                        setIsCloudConnected(true);
-                    };
-
-                    es.onerror = () => {
-                        setIsCloudConnected(false);
-                    };
-
-                    es.addEventListener('put', (e) => {
-                        try {
-                            const parsed = JSON.parse(e.data);
-                            if (parsed && parsed.data) {
-                                if (parsed.path === '/') {
-                                    const payload = parsed.data;
-                                    if (payload.stores && payload.transactions) {
-                                        window.__MULTI_TOKO_GLOBAL_STATE__ = payload;
-                                        setStores(payload.stores);
-                                        setTransactionsMap(payload.transactions);
-                                        if (payload.logs) setLogs(payload.logs);
-                                        triggerPulse();
-                                        setIsCloudConnected(true);
-                                    }
+                        const parsed = JSON.parse(e.data);
+                        if (parsed && parsed.data) {
+                            if (parsed.path === '/' && parsed.data.stores) {
+                                if (!appState.updatedAt || parsed.data.updatedAt > appState.updatedAt) {
+                                    appState = parsed.data;
+                                    triggerPulse('Cloud Live');
+                                    renderAllViews();
                                 }
                             }
-                        } catch (err) {}
-                    });
-                } catch (err) {
-                    setIsCloudConnected(false);
-                }
-
-                return () => {
-                    if (es) es.close();
-                };
-            }, [firebaseConfig.dbUrl, firebaseConfig.roomId]);
-
-            // Data Computed Properties
-            const currentRows = useMemo(() => {
-                const rows = transactionsMap[activeStore.id];
-                if (Array.isArray(rows) && rows.length > 0) return rows;
-                return buildEmptyRows(getTodayISO(), 22);
-            }, [transactionsMap, activeStore.id]);
-
-            const filteredRows = useMemo(() => {
-                const q = searchQuery.trim().toLowerCase();
-                return currentRows.filter((r) => {
-                    const omzet = Number(r.omzet) || 0;
-                    const belanja = Number(r.belanja) || 0;
-                    if (onlyActiveDays && omzet <= 0 && belanja <= 0) return false;
-                    if (!q) return true;
-                    const dispDate = formatDisplayDate(r.date).toLowerCase();
-                    const dayStr = (r.day || '').toLowerCase();
-                    return (
-                        dispDate.includes(q) ||
-                        (r.date || '').toLowerCase().includes(q) ||
-                        dayStr.includes(q) ||
-                        String(omzet).includes(q) ||
-                        String(belanja).includes(q)
-                    );
-                });
-            }, [currentRows, searchQuery, onlyActiveDays]);
-
-            const summary = useMemo(() => {
-                let totalOmzet = 0;
-                let totalBelanja = 0;
-                let totalS75 = 0;
-                let totalS70 = 0;
-                let totalS65 = 0;
-                let totalS60 = 0;
-                let activeDaysCount = 0;
-                let percentSum = 0;
-
-                currentRows.forEach((r) => {
-                    const omzet = Math.max(0, Number(r.omzet) || 0);
-                    const belanja = Math.max(0, Number(r.belanja) || 0);
-                    const sim = computeSimpasan(omzet);
-                    const pct = computeRowPercent(r);
-
-                    totalOmzet += omzet;
-                    totalBelanja += belanja;
-                    totalS75 += sim.s75;
-                    totalS70 += sim.s70;
-                    totalS65 += sim.s65;
-                    totalS60 += sim.s60;
-                    percentSum += pct;
-                    if (omzet > 0 || belanja > 0) activeDaysCount += 1;
-                });
-
-                const avgOmzet = activeDaysCount > 0 ? totalOmzet / activeDaysCount : 0;
-                const avgS75 = activeDaysCount > 0 ? totalS75 / activeDaysCount : 0;
-                const avgS70 = activeDaysCount > 0 ? totalS70 / activeDaysCount : 0;
-                const avgS65 = activeDaysCount > 0 ? totalS65 / activeDaysCount : 0;
-                const avgS60 = activeDaysCount > 0 ? totalS60 / activeDaysCount : 0;
-                const avgPercent = currentRows.length > 0 ? Math.round(percentSum / currentRows.length) : 0;
-                const netDiff = totalOmzet - totalBelanja - totalS75;
-
-                return {
-                    totalOmzet, totalBelanja, totalS75, totalS70, totalS65, totalS60,
-                    activeDaysCount, avgOmzet, avgS75, avgS70, avgS65, avgS60,
-                    avgPercent, netDiff
-                };
-            }, [currentRows]);
-
-            const multiStoreSummary = useMemo(() => {
-                return stores.map((st) => {
-                    const rows = Array.isArray(transactionsMap[st.id]) ? transactionsMap[st.id] : [];
-                    let omzet = 0;
-                    let belanja = 0;
-                    let s75 = 0;
-                    let days = 0;
-
-                    rows.forEach((r) => {
-                        const o = Math.max(0, Number(r.omzet) || 0);
-                        const b = Math.max(0, Number(r.belanja) || 0);
-                        const sim = computeSimpasan(o);
-                        omzet += o;
-                        belanja += b;
-                        s75 += sim.s75;
-                        if (o > 0 || b > 0) days += 1;
-                    });
-
-                    const avgOmzet = days > 0 ? omzet / days : 0;
-                    const net = omzet - belanja - s75;
-                    return { store: st, days, avgOmzet, omzet, s75, belanja, net };
-                });
-            }, [stores, transactionsMap]);
-
-            const grandTotals = useMemo(() => {
-                return multiStoreSummary.reduce(
-                    (acc, item) => {
-                        acc.omzet += item.omzet;
-                        acc.s75 += item.s75;
-                        acc.belanja += item.belanja;
-                        acc.days += item.days;
-                        acc.net += item.net;
-                        return acc;
-                    },
-                    { omzet: 0, s75: 0, belanja: 0, days: 0, net: 0 }
-                );
-            }, [multiStoreSummary]);
-
-            // Render Chart.js on Server Dashboard
-            useEffect(() => {
-                if (isBranchMode || activeTab !== 'dashboard' || !chartCanvasRef.current || typeof Chart === 'undefined') {
-                    return;
-                }
-                if (chartInstanceRef.current) {
-                    chartInstanceRef.current.destroy();
-                }
-
-                const ctx = chartCanvasRef.current.getContext('2d');
-                chartInstanceRef.current = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: multiStoreSummary.map((m) => `${m.store.code} (${m.store.name})`),
-                        datasets: [
-                            {
-                                label: 'Total Omset',
-                                data: multiStoreSummary.map((m) => m.omzet),
-                                backgroundColor: '#3b82f6',
-                                borderRadius: 6
-                            },
-                            {
-                                label: 'Simpasan 7.5%',
-                                data: multiStoreSummary.map((m) => m.s75),
-                                backgroundColor: '#10b981',
-                                borderRadius: 6
-                            },
-                            {
-                                label: 'Total Belanja',
-                                data: multiStoreSummary.map((m) => m.belanja),
-                                backgroundColor: '#a855f7',
-                                borderRadius: 6
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: '#e5e7eb', font: { family: 'Inter', size: 12 } } }
-                        },
-                        scales: {
-                            x: { ticks: { color: '#9ca3af' }, grid: { color: '#232329' } },
-                            y: {
-                                ticks: {
-                                    color: '#9ca3af',
-                                    callback: (v) => 'Rp' + Number(v).toLocaleString('id-ID')
-                                },
-                                grid: { color: '#232329' }
-                            }
                         }
-                    }
+                    } catch (err) {}
                 });
-
-                return () => {
-                    if (chartInstanceRef.current) {
-                        chartInstanceRef.current.destroy();
-                        chartInstanceRef.current = null;
-                    }
-                };
-            }, [isBranchMode, activeTab, multiStoreSummary]);
-
-            // Ledger Transaction Handlers
-            const handleInlineUpdate = (rowId, field, val) => {
-                const updatedRows = currentRows.map((r) => {
-                    if (r.id !== rowId) return r;
-                    if (field === 'date') return { ...r, date: val, day: getHariName(val) };
-                    if (field === 'omzet' || field === 'belanja') {
-                        const num = val === '' ? 0 : Math.max(0, Number(val) || 0);
-                        return { ...r, [field]: num };
-                    }
-                    return { ...r, [field]: val };
-                });
-                const nextMap = { ...transactionsMap, [activeStore.id]: updatedRows };
-                saveState(stores, nextMap, `${activeStore.code} ubah ${field}`);
-            };
-
-            const handleSaveTransactionForm = (e) => {
-                e.preventDefault();
-                const targetDate = newDate || getTodayISO();
-                const omzVal = Math.max(0, Number(newOmzet) || 0);
-                const bljVal = Math.max(0, Number(newBelanja) || 0);
-                const pctVal = newPercent === '' ? '' : Math.max(0, Math.min(100, Number(newPercent) || 0));
-
-                const idx = currentRows.findIndex(r => r.date === targetDate);
-                let updatedRows = [];
-
-                if (idx >= 0) {
-                    updatedRows = currentRows.map((r, i) =>
-                        i === idx ? { ...r, day: getHariName(targetDate), omzet: omzVal, belanja: bljVal, customPercent: pctVal } : r
-                    );
-                } else {
-                    updatedRows = [
-                        ...currentRows,
-                        {
-                            id: `row-${Date.now()}`,
-                            no: currentRows.length + 1,
-                            date: targetDate,
-                            day: getHariName(targetDate),
-                            omzet: omzVal,
-                            belanja: bljVal,
-                            customPercent: pctVal
-                        }
-                    ];
-                }
-
-                const nextMap = { ...transactionsMap, [activeStore.id]: updatedRows };
-                saveState(stores, nextMap, `${activeStore.code} input ${formatDisplayDate(targetDate)}: Omset ${formatRupiah(omzVal)}`);
-                setNewOmzet('');
-                setNewBelanja('');
-                setNewPercent('');
-                showToastMsg(`Data ${formatDisplayDate(targetDate)} berhasil disimpan.`);
-            };
-
-            const handleAddNextRow = () => {
-                const lastRow = currentRows[currentRows.length - 1];
-                const nextDate = lastRow && lastRow.date ? addDaysISO(lastRow.date, 1) : getTodayISO();
-                const nextNo = currentRows.length + 1;
-                const updatedRows = [
-                    ...currentRows,
-                    {
-                        id: `row-${Date.now()}-${nextNo}`,
-                        no: nextNo,
-                        date: nextDate,
-                        day: getHariName(nextDate),
-                        omzet: 0,
-                        belanja: 0,
-                        customPercent: ''
-                    }
-                ];
-                const nextMap = { ...transactionsMap, [activeStore.id]: updatedRows };
-                saveState(stores, nextMap, `${activeStore.code} tambah tanggal ${formatDisplayDate(nextDate)}`);
-                showToastMsg(`Baris tanggal ${formatDisplayDate(nextDate)} ditambahkan.`);
-            };
-
-            const handleClearRow = (rowId) => {
-                const updatedRows = currentRows.map((r) =>
-                    r.id === rowId ? { ...r, omzet: 0, belanja: 0, customPercent: '' } : r
-                );
-                const nextMap = { ...transactionsMap, [activeStore.id]: updatedRows };
-                saveState(stores, nextMap, `${activeStore.code} kosongkan baris`);
-            };
-
-            const handleDeleteRow = (rowId) => {
-                if (currentRows.length <= 1) {
-                    handleClearRow(rowId);
-                    return;
-                }
-                const filtered = currentRows.filter(r => r.id !== rowId).map((r, i) => ({ ...r, no: i + 1 }));
-                const nextMap = { ...transactionsMap, [activeStore.id]: filtered };
-                saveState(stores, nextMap, `${activeStore.code} hapus baris`);
-            };
-
-            const handleCopyLink = (st) => {
-                const fullUrl = getFullStoreUrl(st.code);
-                try {
-                    const ta = document.createElement('textarea');
-                    ta.value = fullUrl;
-                    ta.style.position = 'fixed';
-                    ta.style.opacity = '0';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                    showToastMsg(`Link cabang ${st.code} disalin!`);
-                } catch (e) {
-                    showToastMsg(`Link: ${fullUrl}`);
-                }
-            };
-
-            const handleSaveStore = (e) => {
-                e.preventDefault();
-                const cClean = editCode.trim().toUpperCase();
-                const nClean = editName.trim();
-                if (!cClean || !nClean) {
-                    showToastMsg('Kode dan Nama Toko wajib diisi.');
-                    return;
-                }
-
-                if (editingStoreId) {
-                    const nextStores = stores.map(s =>
-                        s.id === editingStoreId
-                            ? { ...s, code: cClean, name: nClean, location: editLocation.trim() || '-', manager: editManager.trim() || '-' }
-                            : s
-                    );
-                    saveState(nextStores, transactionsMap, `Update data toko ${cClean}`);
-                    setEditingStoreId(null);
-                    showToastMsg(`Toko ${cClean} diperbarui.`);
-                } else {
-                    const newId = `toko-${Date.now()}`;
-                    const newStoreObj = {
-                        id: newId,
-                        code: cClean,
-                        name: nClean,
-                        location: editLocation.trim() || '-',
-                        manager: editManager.trim() || '-'
-                    };
-                    const nextStores = [...stores, newStoreObj];
-                    const nextMap = {
-                        ...transactionsMap,
-                        [newId]: buildEmptyRows(getTodayISO(), 22)
-                    };
-                    saveState(nextStores, nextMap, `Tambah cabang baru ${cClean}`);
-                    showToastMsg(`Toko baru ${cClean} ditambahkan.`);
-                }
-
-                setEditCode('');
-                setEditName('');
-                setEditLocation('');
-                setEditManager('');
-            };
-
-            const handleStartEditStore = (st) => {
-                setEditingStoreId(st.id);
-                setEditCode(st.code);
-                setEditName(st.name);
-                setEditLocation(st.location === '-' ? '' : st.location);
-                setEditManager(st.manager === '-' ? '' : st.manager);
-            };
-
-            const handleDeleteStore = (stId) => {
-                if (stores.length <= 1) {
-                    showToastMsg('Harus ada minimal 1 toko.');
-                    return;
-                }
-                const nextStores = stores.filter(s => s.id !== stId);
-                const nextMap = { ...transactionsMap };
-                delete nextMap[stId];
-                saveState(nextStores, nextMap, 'Hapus toko');
-                showToastMsg('Toko berhasil dihapus.');
-            };
-
-            const handleSaveFirebaseConfig = (e) => {
-                e.preventDefault();
-                try {
-                    localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(firebaseConfig));
-                    showToastMsg('Pengaturan Firebase tersimpan!');
-                    setShowFirebaseModal(false);
-                } catch (err) {}
-            };
-
-            const todayISO = getTodayISO();
-            const todayHari = getHariName(todayISO);
-            const todayDisplay = formatDisplayDate(todayISO);
-
-            return (
-                <div className="min-h-screen flex flex-col bg-black text-gray-100">
-                    {/* Toast Notification */}
-                    {toast && (
-                        <div className="fixed bottom-6 right-6 z-50 bg-emerald-500 text-black font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300">
-                            {toast}
-                        </div>
-                    )}
-
-                    {/* Firebase Settings Modal */}
-                    {showFirebaseModal && (
-                        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                            <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4">
-                                <div className="flex items-center justify-between border-b border-[#232329] pb-3">
-                                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                        <span>⚡</span> Pengaturan Firebase Cloud Realtime
-                                    </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowFirebaseModal(false)}
-                                        className="text-gray-400 hover:text-white font-bold cursor-pointer"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                                <p className="text-xs text-gray-400 leading-relaxed">
-                                    Masukkan <b>Database URL</b> dari proyek Firebase Realtime Database Anda. Ini memungkinkan semua HP/perangkat cabang dan server pusat saling terhubung secara <span className="text-emerald-400 font-semibold">real-time tanpa batasan tab atau browser</span>!
-                                </p>
-
-                                <form onSubmit={handleSaveFirebaseConfig} className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 mb-1">
-                                            Firebase Database URL *
-                                        </label>
-                                        <input
-                                            type="url"
-                                            placeholder="https://nama-proyek-default-rtdb.firebaseio.com"
-                                            value={firebaseConfig.dbUrl}
-                                            onChange={(e) => setFirebaseConfig({ ...firebaseConfig, dbUrl: e.target.value })}
-                                            className="w-full bg-black border border-[#232329] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                                        />
-                                        <p className="text-[11px] text-gray-500 mt-1">
-                                            Contoh: <code>https://my-store-app-default-rtdb.firebaseio.com</code>
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 mb-1">
-                                            Room / Namespace ID (Opsional)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="multi_toko_default"
-                                            value={firebaseConfig.roomId}
-                                            onChange={(e) => setFirebaseConfig({ ...firebaseConfig, roomId: e.target.value })}
-                                            className="w-full bg-black border border-[#232329] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                                        />
-                                    </div>
-
-                                    <div className="pt-2 flex items-center justify-end gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowFirebaseModal(false)}
-                                            className="px-4 py-2 rounded-xl bg-[#111115] border border-[#232329] text-xs text-gray-300 hover:text-white cursor-pointer"
-                                        >
-                                            Batal
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-md transition cursor-pointer"
-                                        >
-                                            Simpan & Hubungkan
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Header */}
-                    <header className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#232329]">
-                        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                            <div className="flex flex-wrap items-center gap-3">
-                                <div className="flex items-center gap-3">
-                                    <div
-                                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-sm shadow-lg ${
-                                            isBranchMode
-                                                ? 'bg-emerald-500 text-black shadow-emerald-500/20'
-                                                : 'bg-blue-600 text-white shadow-blue-600/20'
-                                        }`}
-                                    >
-                                        {isBranchMode ? activeStore.code : 'SRV'}
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">
-                                                {isBranchMode ? `Buku Toko — ${activeStore.name}` : 'Server Pusat Multi-Toko'}
-                                            </h1>
-                                            <span
-                                                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
-                                                    syncPulse
-                                                        ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
-                                                        : isCloudConnected
-                                                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                                                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
-                                                }`}
-                                            >
-                                                <span
-                                                    className={`w-1.5 h-1.5 rounded-full ${
-                                                        syncPulse ? 'bg-amber-400 animate-ping' : isCloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-blue-400'
-                                                    }`}
-                                                ></span>
-                                                {syncPulse
-                                                    ? 'Sinkron!'
-                                                    : isCloudConnected
-                                                        ? 'Firebase Cloud Live'
-                                                        : 'Lokal (Tab/Browser Ini)'} • {lastSyncTime}
-                                            </span>
-                                            <span className="text-xs text-gray-400 capitalize">
-                                                • {todayHari}, {todayDisplay}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-gray-400">
-                                            {isBranchMode
-                                                ? `Cabang ${activeStore.code} • ${activeStore.location} • PIC: ${activeStore.manager}`
-                                                : `Pantau & Kelola (${stores.length} Cabang Toko)`}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* Select Store (Central Server Only) */}
-                                {!isBranchMode && (
-                                    <div className="flex items-center gap-2 bg-[#0a0a0c] border border-[#232329] rounded-xl px-3 py-1.5">
-                                        <label htmlFor="store-select-nav" className="text-xs font-medium text-gray-400">
-                                            Pantau Toko:
-                                        </label>
-                                        <select
-                                            id="store-select-nav"
-                                            value={selectedStoreId}
-                                            onChange={(e) => setSelectedStoreId(e.target.value)}
-                                            className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer"
-                                        >
-                                            {stores.map((st) => (
-                                                <option key={st.id} value={st.id} className="bg-black text-white">
-                                                    {st.code} — {st.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Header Actions (Central Server Only) */}
-                            {!isBranchMode && (
-                                <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowFirebaseModal(true)}
-                                        className="px-3 py-2 rounded-xl bg-[#111115] hover:bg-[#1a1a20] text-gray-300 border border-[#232329] text-xs font-medium transition cursor-pointer flex items-center gap-1.5"
-                                    >
-                                        <span>⚡</span> Cloud Sync
-                                    </button>
-                                    <nav className="flex items-center gap-1 bg-[#0a0a0c] border border-[#232329] p-1 rounded-xl">
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab('dashboard')}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                                                activeTab === 'dashboard'
-                                                    ? 'bg-blue-600 text-white shadow'
-                                                    : 'text-gray-400 hover:text-white'
-                                            }`}
-                                        >
-                                            Pantau Semua Toko
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab('ledger')}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                                                activeTab === 'ledger'
-                                                    ? 'bg-blue-600 text-white shadow'
-                                                    : 'text-gray-400 hover:text-white'
-                                            }`}
-                                        >
-                                            Buku Toko ({activeStore.code})
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab('manage')}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                                                activeTab === 'manage'
-                                                    ? 'bg-blue-600 text-white shadow'
-                                                    : 'text-gray-400 hover:text-white'
-                                            }`}
-                                        >
-                                            Kelola Toko & Link
-                                        </button>
-                                    </nav>
-                                </div>
-                            )}
-                        </div>
-                    </header>
-
-                    {/* Main Content */}
-                    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-
-                        {/* BRANCH MODE OR LEDGER TAB */}
-                        {(isBranchMode || activeTab === 'ledger') && (
-                            <div className="space-y-6">
-                                {/* Banner Info Toko */}
-                                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-xl">
-                                    <div className="space-y-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
-                                                {activeStore.code}
-                                            </span>
-                                            <h2 className="text-lg sm:text-xl font-bold text-white">
-                                                {activeStore.name}
-                                            </h2>
-                                            <span className="text-xs text-gray-400">
-                                                • {activeStore.location} • PIC: {activeStore.manager}
-                                            </span>
-                                        </div>
-                                        {!isBranchMode && (
-                                            <div className="flex items-center gap-2 text-xs pt-1">
-                                                <span className="text-gray-400">Link Cabang Ini:</span>
-                                                <code className="px-2 py-0.5 rounded bg-black border border-[#232329] text-blue-400 font-mono">
-                                                    {getStoreSlug(activeStore.code)}
-                                                </code>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCopyLink(activeStore)}
-                                                    className="px-2.5 py-1 rounded-lg bg-[#111115] hover:bg-[#1a1a20] text-gray-200 border border-[#232329] font-medium transition cursor-pointer text-[11px]"
-                                                >
-                                                    Salin Link Cabang
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleAddNextRow}
-                                            className="px-3.5 py-2 rounded-xl bg-[#111115] hover:bg-[#1a1a20] text-gray-200 border border-[#232329] text-xs font-semibold transition cursor-pointer"
-                                        >
-                                            + Tambah Tanggal
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* KPI Metrics */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
-                                    <div className="bg-blue-600 text-white rounded-2xl p-4 sm:p-5 shadow-lg">
-                                        <div className="text-xs font-bold uppercase tracking-wider opacity-80">Omset Rata-Rata</div>
-                                        <div className="text-2xl sm:text-3xl font-extrabold mt-1">
-                                            {formatAvgRupiah(summary.avgOmzet)}
-                                        </div>
-                                        <div className="text-xs font-medium mt-1 opacity-80">
-                                            Hari aktif: {summary.activeDaysCount} / {currentRows.length} hari
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-lg">
-                                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Omset Toko</div>
-                                        <div className="text-2xl font-extrabold text-emerald-400 mt-1">
-                                            {formatRupiah(summary.totalOmzet)}
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            Akumulasi baris tanggal
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-lg">
-                                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Simpasan (7.5%)</div>
-                                        <div className="text-2xl font-extrabold text-amber-300 mt-1">
-                                            {formatRupiah(summary.totalS75)}
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            Rata-rata/hari: {formatAvgRupiah(summary.avgS75)}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-lg">
-                                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Belanja & Selisih</div>
-                                        <div className="text-xl font-extrabold text-purple-300 mt-1">
-                                            {formatRupiah(summary.totalBelanja)}
-                                        </div>
-                                        <div className={`text-xs font-semibold mt-1 ${summary.netDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            Selisih Bersih: {formatRupiah(summary.netDiff)}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Form Input Harian */}
-                                <section className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-xl">
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-                                        <div>
-                                            <h3 className="text-sm sm:text-base font-bold text-white">
-                                                Form Input Transaksi ({activeStore.code})
-                                            </h3>
-                                            <p className="text-xs text-gray-400">
-                                                Isi form atau edit langsung di tabel bawah. Data otomatis tersinkron ke Server Pusat secara real-time.
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => setOnlyActiveDays(!onlyActiveDays)}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                                                    onlyActiveDays
-                                                        ? 'bg-emerald-500 text-black border-emerald-400'
-                                                        : 'bg-black text-gray-300 border-[#232329] hover:bg-[#111115]'
-                                                }`}
-                                            >
-                                                {onlyActiveDays ? 'Tampilkan Semua Hari' : 'Filter Hari Terisi'}
-                                            </button>
-                                            <input
-                                                type="text"
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                placeholder="Cari tanggal/hari..."
-                                                className="w-full sm:w-48 rounded-xl bg-black border border-[#232329] px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <form onSubmit={handleSaveTransactionForm} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Tanggal</label>
-                                            <input
-                                                type="date"
-                                                value={newDate}
-                                                onChange={(e) => setNewDate(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Hari</label>
-                                            <input
-                                                type="text"
-                                                readOnly
-                                                value={getHariName(newDate) || '-'}
-                                                className="w-full rounded-xl bg-[#111115] border border-[#232329] px-3 py-2 text-xs font-medium text-gray-300 capitalize"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Omset / Hari (Rp)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="any"
-                                                placeholder="0"
-                                                value={newOmzet}
-                                                onChange={(e) => setNewOmzet(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Total Belanja (Rp)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="any"
-                                                placeholder="0"
-                                                value={newBelanja}
-                                                onChange={(e) => setNewBelanja(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Persen (%) Opsional</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                step="any"
-                                                placeholder="Otomatis"
-                                                value={newPercent}
-                                                onChange={(e) => setNewPercent(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <button
-                                                type="submit"
-                                                className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 px-4 text-xs shadow-md transition cursor-pointer"
-                                            >
-                                                Simpan Data
-                                            </button>
-                                        </div>
-                                    </form>
-                                </section>
-
-                                {/* Tabel Pembukuan Harian */}
-                                <section className="bg-[#0a0a0c] border border-[#232329] rounded-2xl overflow-hidden shadow-2xl">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse text-xs tabular-nums">
-                                            <thead>
-                                                <tr className="bg-[#111115] text-gray-200 font-bold border-b border-[#232329]">
-                                                    <th className="py-2.5 px-2.5 border-r border-[#232329] text-center w-12">NO.</th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-left min-w-[125px]">tanggal</th>
-                                                    <th className="py-2.5 px-2.5 border-r border-[#232329] text-left w-20">hari</th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[140px]">omset/hari</th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[125px] bg-emerald-500 text-black">
-                                                        Simpasan 7.5%
-                                                    </th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[125px] bg-amber-400 text-black">
-                                                        Simpasan 7%
-                                                    </th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[125px] bg-amber-500 text-black">
-                                                        Simpasan 6.5%
-                                                    </th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[125px] bg-rose-500 text-white">
-                                                        simpasan 6%
-                                                    </th>
-                                                    <th className="py-2.5 px-3 border-r border-[#232329] text-right min-w-[130px]">total belanja</th>
-                                                    <th className="py-2.5 px-2.5 border-r border-[#232329] text-center w-20">persen</th>
-                                                    <th className="py-2.5 px-2 text-center w-20">aksi</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredRows.length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan="11" className="py-8 text-center text-gray-400">
-                                                            Tidak ada data transaksi.
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    filteredRows.map((row) => {
-                                                        const sim = computeSimpasan(row.omzet);
-                                                        const pct = computeRowPercent(row);
-                                                        const hasValue = (Number(row.omzet) || 0) > 0 || (Number(row.belanja) || 0) > 0;
-                                                        return (
-                                                            <tr
-                                                                key={row.id}
-                                                                className={`border-b border-[#232329]/80 transition ${
-                                                                    hasValue ? 'bg-[#111115]/60 hover:bg-[#111115]' : 'bg-black hover:bg-[#0a0a0c]'
-                                                                }`}
-                                                            >
-                                                                <td className="py-1.5 px-2 border-r border-[#232329] text-center font-semibold text-gray-400">
-                                                                    {row.no}
-                                                                </td>
-                                                                <td className="py-1.5 px-2 border-r border-[#232329] text-left font-medium text-blue-400">
-                                                                    <input
-                                                                        type="date"
-                                                                        value={row.date || ''}
-                                                                        onChange={(e) => handleInlineUpdate(row.id, 'date', e.target.value)}
-                                                                        className="w-full bg-transparent text-blue-400 font-medium focus:outline-none rounded px-1 py-0.5"
-                                                                    />
-                                                                </td>
-                                                                <td className="py-1.5 px-2.5 border-r border-[#232329] text-left text-gray-300 capitalize">
-                                                                    {row.day}
-                                                                </td>
-                                                                <td className="py-1.5 px-2 border-r border-[#232329] text-right">
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="any"
-                                                                        value={row.omzet === 0 ? '' : row.omzet}
-                                                                        placeholder="0"
-                                                                        onChange={(e) => handleInlineUpdate(row.id, 'omzet', e.target.value)}
-                                                                        className="w-full text-right bg-transparent text-white font-semibold tabular-nums focus:outline-none rounded px-1.5 py-0.5"
-                                                                    />
-                                                                </td>
-                                                                <td className="py-1.5 px-3 border-r border-[#232329] text-right font-semibold bg-emerald-500/90 text-black">
-                                                                    {formatRupiah(sim.s75)}
-                                                                </td>
-                                                                <td className="py-1.5 px-3 border-r border-[#232329] text-right font-semibold bg-amber-400/90 text-black">
-                                                                    {formatRupiah(sim.s70)}
-                                                                </td>
-                                                                <td className="py-1.5 px-3 border-r border-[#232329] text-right font-semibold bg-amber-500/90 text-black">
-                                                                    {formatRupiah(sim.s65)}
-                                                                </td>
-                                                                <td className="py-1.5 px-3 border-r border-[#232329] text-right font-semibold bg-rose-500/90 text-white">
-                                                                    {formatRupiah(sim.s60)}
-                                                                </td>
-                                                                <td className="py-1.5 px-2 border-r border-[#232329] text-right">
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="any"
-                                                                        value={row.belanja === 0 ? '' : row.belanja}
-                                                                        placeholder="0"
-                                                                        onChange={(e) => handleInlineUpdate(row.id, 'belanja', e.target.value)}
-                                                                        className="w-full text-right bg-transparent text-gray-200 tabular-nums focus:outline-none rounded px-1.5 py-0.5"
-                                                                    />
-                                                                </td>
-                                                                <td className="py-1.5 px-2 border-r border-[#232329] text-center font-semibold text-gray-300">
-                                                                    {pct}%
-                                                                </td>
-                                                                <td className="py-1.5 px-2 text-center whitespace-nowrap">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleClearRow(row.id)}
-                                                                        title="Kosongkan"
-                                                                        className="px-2 py-0.5 rounded bg-[#232329] hover:bg-[#32323b] text-gray-200 text-[10px] font-semibold mr-1 cursor-pointer"
-                                                                    >
-                                                                        0
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleDeleteRow(row.id)}
-                                                                        title="Hapus"
-                                                                        className="px-2 py-0.5 rounded bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-[10px] font-semibold cursor-pointer"
-                                                                    >
-                                                                        ✕
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })
-                                                )}
-
-                                                {/* Total Simpasan Row */}
-                                                <tr className="bg-purple-950/80 text-white font-bold border-t-2 border-purple-700">
-                                                    <td colSpan="4" className="py-2.5 px-3 border-r border-purple-800 text-right uppercase text-xs text-purple-200">
-                                                        Total Simpasan Per Skema
-                                                    </td>
-                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">{formatRupiah(summary.totalS75)}</td>
-                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">{formatRupiah(summary.totalS70)}</td>
-                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">{formatRupiah(summary.totalS65)}</td>
-                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">{formatRupiah(summary.totalS60)}</td>
-                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right text-purple-200">{formatRupiah(summary.totalBelanja)}</td>
-                                                    <td className="py-2.5 px-2.5 border-r border-purple-800 text-center text-purple-200">{summary.avgPercent}%</td>
-                                                    <td className="py-2.5 px-2 text-center text-xs text-purple-300">{summary.activeDaysCount} hr</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </section>
-
-                                {/* Bottom Rekap Tables */}
-                                <section className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-                                    <div className="xl:col-span-7 bg-[#0a0a0c] border border-[#232329] rounded-2xl p-4 sm:p-5 shadow-xl overflow-x-auto">
-                                        <h3 className="text-sm font-bold text-white mb-3">
-                                            Rekap Rata-Rata, Jumlah Hari & Hasil Simpasan
-                                        </h3>
-                                        <table className="w-full border-collapse text-xs tabular-nums">
-                                            <thead>
-                                                <tr className="bg-[#111115] text-gray-200 font-bold">
-                                                    <th className="py-2 px-3 border border-[#232329] text-left">Keterangan</th>
-                                                    <th className="py-2 px-3 border border-[#232329] text-right bg-emerald-500 text-black">7.5%</th>
-                                                    <th className="py-2 px-3 border border-[#232329] text-right bg-amber-400 text-black">7%</th>
-                                                    <th className="py-2 px-3 border border-[#232329] text-right bg-amber-500 text-black">6.5%</th>
-                                                    <th className="py-2 px-3 border border-[#232329] text-right bg-rose-500 text-white">6%</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr className="bg-amber-400 text-black font-bold">
-                                                    <td className="py-2 px-3 border border-amber-600">hasil rata rata</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatAvgRupiah(summary.avgS75)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatAvgRupiah(summary.avgS70)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatAvgRupiah(summary.avgS65)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatAvgRupiah(summary.avgS60)}</td>
-                                                </tr>
-                                                <tr className="bg-amber-300 text-black font-extrabold">
-                                                    <td className="py-2 px-3 border border-amber-500">jumlah hari aktif</td>
-                                                    <td className="py-2 px-3 border border-amber-500 text-right">{summary.activeDaysCount}</td>
-                                                    <td className="py-2 px-3 border border-amber-500 text-right">{summary.activeDaysCount}</td>
-                                                    <td className="py-2 px-3 border border-amber-500 text-right">{summary.activeDaysCount}</td>
-                                                    <td className="py-2 px-3 border border-amber-500 text-right">{summary.activeDaysCount}</td>
-                                                </tr>
-                                                <tr className="bg-amber-400 text-black font-bold">
-                                                    <td className="py-2 px-3 border border-amber-600">hasil simpasan</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatRupiah(summary.totalS75)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatRupiah(summary.totalS70)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatRupiah(summary.totalS65)}</td>
-                                                    <td className="py-2 px-3 border border-amber-600 text-right">{formatRupiah(summary.totalS60)}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    <div className="xl:col-span-5 bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-xl space-y-4">
-                                        <h3 className="text-sm font-bold text-white">
-                                            Ringkasan Omset, Belanja & Selisih ({activeStore.code})
-                                        </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 tabular-nums">
-                                            <div className="rounded-xl bg-emerald-500 text-black p-3.5 shadow">
-                                                <div className="text-[11px] font-bold uppercase opacity-80">Total Omset</div>
-                                                <div className="text-lg font-extrabold mt-0.5">{formatRupiah(summary.totalOmzet)}</div>
-                                            </div>
-                                            <div className="rounded-xl bg-blue-600 text-white p-3.5 shadow">
-                                                <div className="text-[11px] font-bold uppercase opacity-80">omset rata rata</div>
-                                                <div className="text-lg font-extrabold mt-0.5">{formatAvgRupiah(summary.avgOmzet)}</div>
-                                            </div>
-                                            <div className="rounded-xl bg-purple-600 text-white p-3.5 shadow">
-                                                <div className="text-[11px] font-bold uppercase opacity-90">Total Belanja</div>
-                                                <div className="text-lg font-extrabold mt-0.5">{formatRupiah(summary.totalBelanja)}</div>
-                                            </div>
-                                            <div className="rounded-xl bg-amber-500 text-black p-3.5 shadow">
-                                                <div className="text-[11px] font-bold uppercase opacity-80">Omset Bersih (Setelah 7.5%)</div>
-                                                <div className="text-lg font-extrabold mt-0.5">
-                                                    {formatRupiah(summary.totalOmzet - summary.totalS75)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-                            </div>
-                        )}
-
-                        {/* CENTRAL SERVER DASHBOARD TAB */}
-                        {!isBranchMode && activeTab === 'dashboard' && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-lg">
-                                        <div className="text-xs font-semibold text-gray-400 uppercase">Total Omset Semua Toko</div>
-                                        <div className="text-2xl font-extrabold text-blue-400 mt-1">{formatRupiah(grandTotals.omzet)}</div>
-                                        <div className="text-xs text-gray-400 mt-1">Dari {stores.length} cabang aktif</div>
-                                    </div>
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-lg">
-                                        <div className="text-xs font-semibold text-gray-400 uppercase">Total Simpasan 7.5% Gabungan</div>
-                                        <div className="text-2xl font-extrabold text-emerald-400 mt-1">{formatRupiah(grandTotals.s75)}</div>
-                                        <div className="text-xs text-gray-400 mt-1">Simpasan otomatis 7.5%</div>
-                                    </div>
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-lg">
-                                        <div className="text-xs font-semibold text-gray-400 uppercase">Total Belanja Gabungan</div>
-                                        <div className="text-2xl font-extrabold text-purple-300 mt-1">{formatRupiah(grandTotals.belanja)}</div>
-                                        <div className="text-xs text-gray-400 mt-1">Total hari aktif: {grandTotals.days} hari</div>
-                                    </div>
-                                    <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-lg">
-                                        <div className="text-xs font-semibold text-gray-400 uppercase">Selisih Bersih Server</div>
-                                        <div className={`text-2xl font-extrabold mt-1 ${grandTotals.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {formatRupiah(grandTotals.net)}
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-1">Omset - Belanja - Simpasan 7.5%</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-xl">
-                                    <h3 className="text-base font-bold text-white mb-1">
-                                        Grafik Perbandingan Omset, Simpasan 7.5% & Belanja Antar Toko
-                                    </h3>
-                                    <p className="text-xs text-gray-400 mb-4">
-                                        Visualisasi pemantauan real-time seluruh toko cabang.
-                                    </p>
-                                    <div className="h-72 sm:h-80 w-full">
-                                        <canvas ref={chartCanvasRef}></canvas>
-                                    </div>
-                                </div>
-
-                                {/* Log Aktivitas Realtime */}
-                                <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-xl space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-base font-bold text-white">Log Aktivitas Masuk Real-Time</h3>
-                                            <p className="text-xs text-gray-400">
-                                                Setiap perubahan input dari cabang langsung tercatat di sini.
-                                            </p>
-                                        </div>
-                                        <span className="text-xs text-blue-400 font-semibold">
-                                            Terakhir: {lastSyncTime}
-                                        </span>
-                                    </div>
-                                    {logs.length === 0 ? (
-                                        <p className="text-xs text-gray-400 py-3">Belum ada aktivitas baru.</p>
-                                    ) : (
-                                        <ul className="space-y-1.5 text-xs max-h-56 overflow-y-auto">
-                                            {logs.map((item) => (
-                                                <li
-                                                    key={item.id}
-                                                    className="flex items-center justify-between gap-3 bg-black border border-[#232329] rounded-xl px-3 py-2"
-                                                >
-                                                    <span className="text-gray-200">{item.message}</span>
-                                                    <span className="text-gray-400 font-mono text-[11px]">{item.time}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-
-                                <div className="bg-[#0a0a0c] border border-[#232329] rounded-2xl overflow-hidden shadow-xl">
-                                    <div className="p-4 sm:p-5 border-b border-[#232329] flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-base font-bold text-white">Ringkasan & Akses Cepat Toko</h3>
-                                            <p className="text-xs text-gray-400">Klik "Pantau Buku Toko" untuk melihat transaksi detail cabang.</p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab('manage')}
-                                            className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
-                                        >
-                                            + Kelola Toko & Link
-                                        </button>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse text-xs tabular-nums">
-                                            <thead>
-                                                <tr className="bg-[#111115] text-gray-200 font-bold border-b border-[#232329]">
-                                                    <th className="py-3 px-4 text-left">Kode & Nama Toko</th>
-                                                    <th className="py-3 px-3 text-center">Hari Aktif</th>
-                                                    <th className="py-3 px-3 text-right">Omset Rata-Rata</th>
-                                                    <th className="py-3 px-3 text-right">Total Omset</th>
-                                                    <th className="py-3 px-3 text-right text-emerald-400">Simpasan 7.5%</th>
-                                                    <th className="py-3 px-3 text-right text-purple-300">Total Belanja</th>
-                                                    <th className="py-3 px-3 text-right">Selisih</th>
-                                                    <th className="py-3 px-4 text-center">Aksi & Link Cabang</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {multiStoreSummary.map(({ store, days, avgOmzet, omzet, s75, belanja, net }) => (
-                                                    <tr key={store.id} className="border-b border-[#232329]/80 hover:bg-[#111115]/60">
-                                                        <td className="py-3 px-4">
-                                                            <div className="font-bold text-white">{store.code} — {store.name}</div>
-                                                            <div className="text-[11px] text-gray-400">{store.location} • PIC: {store.manager}</div>
-                                                        </td>
-                                                        <td className="py-3 px-3 text-center font-semibold text-gray-300">{days} hr</td>
-                                                        <td className="py-3 px-3 text-right font-semibold text-blue-400">{formatAvgRupiah(avgOmzet)}</td>
-                                                        <td className="py-3 px-3 text-right font-bold text-white">{formatRupiah(omzet)}</td>
-                                                        <td className="py-3 px-3 text-right font-semibold text-emerald-400">{formatRupiah(s75)}</td>
-                                                        <td className="py-3 px-3 text-right font-semibold text-purple-300">{formatRupiah(belanja)}</td>
-                                                        <td className={`py-3 px-3 text-right font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {formatRupiah(net)}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-center space-x-1.5 whitespace-nowrap">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedStoreId(store.id);
-                                                                    setActiveTab('ledger');
-                                                                }}
-                                                                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
-                                                            >
-                                                                Pantau Buku
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleCopyLink(store)}
-                                                                className="px-2.5 py-1.5 rounded-lg bg-[#111115] hover:bg-[#1a1a20] text-gray-200 border border-[#232329] text-xs font-semibold cursor-pointer"
-                                                            >
-                                                                Salin Link ({getStoreSlug(store.code)})
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* MANAGING STORES TAB */}
-                        {!isBranchMode && activeTab === 'manage' && (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                                <div className="lg:col-span-4 bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-xl">
-                                    <h3 className="text-base font-bold text-white mb-1">
-                                        {editingStoreId ? 'Edit Data Toko' : 'Tambah Toko Cabang Baru'}
-                                    </h3>
-                                    <p className="text-xs text-gray-400 mb-4">
-                                        Setiap toko memiliki slug unik seperti `#tk-01`, `#tk-02`, `#tk-03`, dst.
-                                    </p>
-                                    <form onSubmit={handleSaveStore} className="space-y-3.5">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Kode Toko *</label>
-                                            <input
-                                                type="text"
-                                                placeholder={`Contoh: TK-0${stores.length + 1}`}
-                                                value={editCode}
-                                                onChange={(e) => setEditCode(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Nama Toko *</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Contoh: Toko Cabang Barat"
-                                                value={editName}
-                                                onChange={(e) => setEditName(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Alamat / Lokasi</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Contoh: Jl. Sudirman No. 45"
-                                                value={editLocation}
-                                                onChange={(e) => setEditLocation(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">PIC / Penanggung Jawab</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Nama Kepala Toko"
-                                                value={editManager}
-                                                onChange={(e) => setEditManager(e.target.value)}
-                                                className="w-full rounded-xl bg-black border border-[#232329] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2 pt-1">
-                                            <button
-                                                type="submit"
-                                                className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 text-xs shadow-md transition cursor-pointer"
-                                            >
-                                                {editingStoreId ? 'Simpan Perubahan' : '+ Tambah Toko'}
-                                            </button>
-                                            {editingStoreId && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setEditingStoreId(null);
-                                                        setEditCode('');
-                                                        setEditName('');
-                                                        setEditLocation('');
-                                                        setEditManager('');
-                                                    }}
-                                                    className="rounded-xl bg-[#111115] hover:bg-[#1a1a20] text-gray-300 border border-[#232329] font-semibold py-2 px-3 text-xs transition cursor-pointer"
-                                                >
-                                                    Batal
-                                                </button>
-                                            )}
-                                        </div>
-                                    </form>
-                                </div>
-
-                                <div className="lg:col-span-8 bg-[#0a0a0c] border border-[#232329] rounded-2xl p-5 shadow-xl space-y-4">
-                                    <div>
-                                        <h3 className="text-base font-bold text-white">Daftar Toko & Link Masing-Masing ({stores.length})</h3>
-                                        <p className="text-xs text-gray-400">
-                                            Salin link khusus cabang untuk dikirimkan ke kasir/PIC toko. Saat dibuka lewat link tersebut, tampilannya <b>murni hanya Buku Toko cabang itu saja</b>.
-                                        </p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {stores.map((st) => {
-                                            const slug = getStoreSlug(st.code);
-                                            return (
-                                                <div
-                                                    key={st.id}
-                                                    className="rounded-2xl border border-[#232329] bg-black p-4 space-y-3"
-                                                >
-                                                    <div className="flex items-start justify-between">
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="px-2 py-0.5 rounded bg-[#111115] border border-[#232329] text-blue-400 text-xs font-bold">
-                                                                    {st.code}
-                                                                </span>
-                                                                <h4 className="text-sm font-bold text-white">{st.name}</h4>
-                                                            </div>
-                                                            <p className="text-xs text-gray-400 mt-1">{st.location}</p>
-                                                            <p className="text-xs text-gray-400">PIC: {st.manager}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="p-2.5 rounded-xl bg-[#0a0a0c] border border-[#232329] text-xs font-mono text-blue-400 flex items-center justify-between">
-                                                        <span>{slug}</span>
-                                                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                            Akses Murni Cabang
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="pt-2 border-t border-[#232329] flex items-center justify-between gap-2">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedStoreId(st.id);
-                                                                    setActiveTab('ledger');
-                                                                }}
-                                                                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
-                                                            >
-                                                                Buka Buku
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleCopyLink(st)}
-                                                                className="px-2.5 py-1.5 rounded-lg bg-[#111115] hover:bg-[#1a1a20] text-gray-200 border border-[#232329] text-xs font-medium cursor-pointer"
-                                                            >
-                                                                Salin Link
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleStartEditStore(st)}
-                                                                className="px-2.5 py-1.5 rounded-lg bg-[#111115] hover:bg-[#1a1a20] text-gray-200 border border-[#232329] text-xs font-medium cursor-pointer"
-                                                            >
-                                                                Edit
-                                                            </button>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteStore(st.id)}
-                                                            className="px-2.5 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-xs font-medium cursor-pointer"
-                                                        >
-                                                            Hapus
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                    </main>
-
-                    <footer className="border-t border-[#232329] bg-black py-4 px-4 sm:px-6 text-xs text-gray-500">
-                        <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-                            <span>
-                                {isBranchMode
-                                    ? `Buku Toko Cabang — ${activeStore.code} (${activeStore.name})`
-                                    : `Server Pusat Multi-Toko • Pemantauan Real-Time (${stores.length} Cabang)`}
-                            </span>
-                            <span>Skema Simpasan: 7.5% • 7% • 6.5% • 6% Dari Omset</span>
-                        </div>
-                    </footer>
-                </div>
-            );
+            } catch (err) {}
         }
 
-        class ErrorBoundary extends React.Component {
-            constructor(props) {
-                super(props);
-                this.state = { hasError: false, error: null };
-            }
-            static getDerivedStateFromError(error) {
-                return { hasError: true, error };
-            }
-            componentDidCatch(error, errorInfo) {
-                console.error("ErrorBoundary caught an error:", error, errorInfo);
-            }
-            render() {
-                if (this.state.hasError) {
-                    return (
-                        <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-                            <div className="max-w-md w-full bg-[#0a0a0c] border border-rose-800 rounded-2xl p-6 space-y-4 text-center">
-                                <div className="text-3xl">⚠️</div>
-                                <h2 className="text-lg font-bold text-rose-400">Terjadi Kesalahan Aplikasi</h2>
-                                <p className="text-xs text-gray-300 bg-black p-3 rounded-xl border border-[#232329] text-left font-mono">
-                                    {this.state.error?.message || 'Gagal memuat komponen.'}
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={() => window.location.reload()}
-                                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer transition"
-                                >
-                                    Muat Ulang Halaman
-                                </button>
-                            </div>
-                        </div>
-                    );
-                }
-                return this.props.children;
-            }
-        }
+        // Initialization
+        window.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('input-form-date').value = DEFAULT_DATE;
+            loadLocalState();
+            initRealtimeEngines();
+            detectRouting();
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(
-            <ErrorBoundary>
-                <App />
-            </ErrorBoundary>
-        );
+            window.addEventListener('hashchange', function() {
+                detectRouting();
+            });
+        });
     </script>
 </body>
 </html>
-```
