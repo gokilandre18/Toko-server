@@ -120,36 +120,68 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        const STORAGE_KEY_STORES = 'server_multi_toko_stores_v5';
-        const STORAGE_KEY_DATA = 'server_multi_toko_data_v5';
-        const STORAGE_KEY_LOGS = 'server_multi_toko_logs_v5';
-        const BROADCAST_CHANNEL_NAME = 'server_multi_toko_sync_channel_v5';
+        const DB_STORAGE_KEY = 'multi_toko_server_db_v1';
+        const SYNC_EVENT_KEY = 'multi_toko_sync_event_v1';
+        const BROADCAST_NAME = 'multi_toko_broadcast_v1';
 
-        // Penyimpanan memori cadangan jika localStorage diblokir oleh sandbox/iframe
-        window.__SERVER_MEMORY_STATE__ = window.__SERVER_MEMORY_STATE__ || {
-            stores: null,
+        const INITIAL_STORES = [
+            { id: 'toko-1', code: 'TK-01', name: 'Toko Pusat Utama', location: 'Jl. Merdeka No. 1', manager: 'Admin Pusat' },
+            { id: 'toko-2', code: 'TK-02', name: 'Toko Cabang Barat', location: 'Jl. Sudirman No. 45', manager: 'Budi Santoso' },
+            { id: 'toko-3', code: 'TK-03', name: 'Toko Cabang Timur', location: 'Jl. Ahmad Yani No. 88', manager: 'Siti Rahma' }
+        ];
+
+        // Memory Fallback Global jika localStorage diblokir/terisolasi sandbox
+        window.__MULTI_TOKO_SHARED_STATE__ = window.__MULTI_TOKO_SHARED_STATE__ || {
+            stores: INITIAL_STORES,
             transactions: null,
-            logs: []
+            logs: [],
+            lastUpdated: Date.now()
         };
 
-        function safeReadStorage(key) {
+        function getSharedDB() {
             try {
-                const raw = localStorage.getItem(key);
-                if (raw !== null) return JSON.parse(raw);
+                const raw = localStorage.getItem(DB_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object' && parsed.stores) {
+                        window.__MULTI_TOKO_SHARED_STATE__ = parsed;
+                        return parsed;
+                    }
+                }
             } catch (e) {}
-            if (key === STORAGE_KEY_STORES) return window.__SERVER_MEMORY_STATE__.stores;
-            if (key === STORAGE_KEY_DATA) return window.__SERVER_MEMORY_STATE__.transactions;
-            if (key === STORAGE_KEY_LOGS) return window.__SERVER_MEMORY_STATE__.logs;
-            return null;
+            return window.__MULTI_TOKO_SHARED_STATE__;
         }
 
-        function safeWriteStorage(key, value) {
+        function saveSharedDB(stores, transactions, logMsg = '') {
+            const now = Date.now();
+            const currentDB = getSharedDB();
+            const currentLogs = currentDB.logs || [];
+            let updatedLogs = currentLogs;
+
+            if (logMsg) {
+                const newEntry = {
+                    id: `${now}-${Math.random().toString(36).slice(2, 6)}`,
+                    time: new Date().toLocaleTimeString('id-ID'),
+                    message: logMsg
+                };
+                updatedLogs = [newEntry, ...currentLogs].slice(0, 25);
+            }
+
+            const newState = {
+                stores: stores || currentDB.stores || INITIAL_STORES,
+                transactions: transactions || currentDB.transactions || {},
+                logs: updatedLogs,
+                lastUpdated: now
+            };
+
+            window.__MULTI_TOKO_SHARED_STATE__ = newState;
+
             try {
-                localStorage.setItem(key, JSON.stringify(value));
+                localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(newState));
+                localStorage.setItem(SYNC_EVENT_KEY, String(now));
             } catch (e) {}
-            if (key === STORAGE_KEY_STORES) window.__SERVER_MEMORY_STATE__.stores = value;
-            if (key === STORAGE_KEY_DATA) window.__SERVER_MEMORY_STATE__.transactions = value;
-            if (key === STORAGE_KEY_LOGS) window.__SERVER_MEMORY_STATE__.logs = value;
+
+            return newState;
         }
 
         const HARI_ID = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
@@ -268,12 +300,6 @@
             return storesList[0].id;
         }
 
-        const INITIAL_STORES = [
-            { id: 'toko-1', code: 'TK-01', name: 'Toko Pusat Utama', location: 'Jl. Merdeka No. 1', manager: 'Admin Pusat' },
-            { id: 'toko-2', code: 'TK-02', name: 'Toko Cabang Barat', location: 'Jl. Sudirman No. 45', manager: 'Budi Santoso' },
-            { id: 'toko-3', code: 'TK-03', name: 'Toko Cabang Timur', location: 'Jl. Ahmad Yani No. 88', manager: 'Siti Rahma' }
-        ];
-
         function buildEmptyTransactions(endDateISO = getTodayISO(), totalDays = 22) {
             const startISO = addDaysISO(endDateISO, -(totalDays - 1));
             const rows = [];
@@ -302,24 +328,26 @@
 
         function App() {
             const [stores, setStores] = useState(() => {
-                const saved = safeReadStorage(STORAGE_KEY_STORES);
-                if (Array.isArray(saved) && saved.length > 0) return saved;
-                return INITIAL_STORES;
+                const db = getSharedDB();
+                return Array.isArray(db.stores) && db.stores.length > 0 ? db.stores : INITIAL_STORES;
             });
 
             const [allTransactions, setAllTransactions] = useState(() => {
-                const saved = safeReadStorage(STORAGE_KEY_DATA);
-                if (saved && typeof saved === 'object') return saved;
-                return buildInitialAllData(INITIAL_STORES, getTodayISO());
+                const db = getSharedDB();
+                if (db.transactions && typeof db.transactions === 'object' && Object.keys(db.transactions).length > 0) {
+                    return db.transactions;
+                }
+                const initialMap = buildInitialAllData(INITIAL_STORES, getTodayISO());
+                saveSharedDB(INITIAL_STORES, initialMap, 'Inisialisasi Server Multi-Toko');
+                return initialMap;
             });
 
             const [activityLogs, setActivityLogs] = useState(() => {
-                const saved = safeReadStorage(STORAGE_KEY_LOGS);
-                return Array.isArray(saved) ? saved : [];
+                const db = getSharedDB();
+                return Array.isArray(db.logs) ? db.logs : [];
             });
 
-            // Jika URL memiliki hash (#tk-01, #tk-02, dst), tampilan murni Buku Toko cabang tersebut saja.
-            // Jika URL utama (tanpa hash), tampilan adalah Server Pusat yang memantau semua toko.
+            // Deteksi Mode Cabang (#tk-01, #tk-02, dst.) vs Server Pusat
             const [isBranchView, setIsBranchView] = useState(() => {
                 const hash = (window.location.hash || '').replace(/^#/, '').trim();
                 return Boolean(hash);
@@ -348,7 +376,7 @@
             const [newStoreLocation, setNewStoreLocation] = useState('');
             const [newStoreManager, setNewStoreManager] = useState('');
 
-            // Toast Notification
+            // Toast & Sync Indicators
             const [toastMessage, setToastMessage] = useState('');
             const [lastSyncTime, setLastSyncTime] = useState(() => new Date().toLocaleTimeString('id-ID'));
             const [syncPulse, setSyncPulse] = useState(false);
@@ -362,19 +390,6 @@
                 setTimeout(() => setSyncPulse(false), 900);
             };
 
-            const appendActivityLog = (message) => {
-                const entry = {
-                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                    time: new Date().toLocaleTimeString('id-ID'),
-                    message
-                };
-                setActivityLogs((prev) => {
-                    const next = [entry, ...prev].slice(0, 15);
-                    safeWriteStorage(STORAGE_KEY_LOGS, next);
-                    return next;
-                });
-            };
-
             const showToast = (msg) => {
                 setToastMessage(msg);
                 setTimeout(() => {
@@ -382,15 +397,15 @@
                 }, 3200);
             };
 
-            // Simpan ke localStorage & broadcast ke tab/jendela lain + cloud
+            // Simpan data & pancarkan pembaruan real-time ke semua tab/pusat
             const persistStores = (updatedStores, logMsg = '') => {
-                setStores(updatedStores);
+                const newState = saveSharedDB(updatedStores, allTransactions, logMsg);
+                setStores(newState.stores);
+                setActivityLogs(newState.logs);
                 triggerSyncPulse();
-                safeWriteStorage(STORAGE_KEY_STORES, updatedStores);
-                if (logMsg) appendActivityLog(logMsg);
                 if (channelRef.current) {
                     try {
-                        channelRef.current.postMessage({ type: 'SYNC_STORES', payload: updatedStores, logMsg, ts: Date.now() });
+                        channelRef.current.postMessage({ payload: newState, logMsg, ts: Date.now() });
                     } catch (e) {}
                 }
                 if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
@@ -399,13 +414,13 @@
             };
 
             const persistTransactions = (updatedMap, logMsg = '') => {
-                setAllTransactions(updatedMap);
+                const newState = saveSharedDB(stores, updatedMap, logMsg);
+                setAllTransactions(newState.transactions);
+                setActivityLogs(newState.logs);
                 triggerSyncPulse();
-                safeWriteStorage(STORAGE_KEY_DATA, updatedMap);
-                if (logMsg) appendActivityLog(logMsg);
                 if (channelRef.current) {
                     try {
-                        channelRef.current.postMessage({ type: 'SYNC_DATA', payload: updatedMap, logMsg, ts: Date.now() });
+                        channelRef.current.postMessage({ payload: newState, logMsg, ts: Date.now() });
                     } catch (e) {}
                 }
                 if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
@@ -413,55 +428,62 @@
                 }
             };
 
-            // Setup BroadcastChannel & Storage listener antar tab/browser
+            // Mekanisme Sinkronisasi Real-Time: Polling 400ms + BroadcastChannel + Storage Event
             useEffect(() => {
+                let lastKnownTs = 0;
+
+                const applySync = (remoteData) => {
+                    if (!remoteData) return;
+                    if (remoteData.lastUpdated && remoteData.lastUpdated <= lastKnownTs) return;
+                    lastKnownTs = remoteData.lastUpdated || Date.now();
+
+                    if (Array.isArray(remoteData.stores) && remoteData.stores.length > 0) {
+                        setStores(remoteData.stores);
+                    }
+                    if (remoteData.transactions && typeof remoteData.transactions === 'object') {
+                        setAllTransactions(remoteData.transactions);
+                    }
+                    if (Array.isArray(remoteData.logs)) {
+                        setActivityLogs(remoteData.logs);
+                    }
+                    triggerSyncPulse();
+                };
+
+                // 1. Initial Sync
+                applySync(getSharedDB());
+
+                // 2. BroadcastChannel Listener
+                let bc = null;
                 try {
-                    const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+                    bc = new BroadcastChannel(BROADCAST_NAME);
                     channelRef.current = bc;
-                    bc.onmessage = (event) => {
-                        if (!event || !event.data) return;
-                        if (event.data.type === 'SYNC_STORES' && Array.isArray(event.data.payload)) {
-                            setStores(event.data.payload);
-                            safeWriteStorage(STORAGE_KEY_STORES, event.data.payload);
-                            if (event.data.logMsg) appendActivityLog(`[Masuk] ${event.data.logMsg}`);
-                            triggerSyncPulse();
-                        } else if (event.data.type === 'SYNC_DATA' && event.data.payload) {
-                            setAllTransactions(event.data.payload);
-                            safeWriteStorage(STORAGE_KEY_DATA, event.data.payload);
-                            if (event.data.logMsg) appendActivityLog(`[Masuk] ${event.data.logMsg}`);
-                            triggerSyncPulse();
+                    bc.onmessage = (ev) => {
+                        if (ev && ev.data && ev.data.payload) {
+                            applySync(ev.data.payload);
                         }
                     };
                 } catch (e) {}
 
+                // 3. Storage Event Listener
                 const onStorage = (e) => {
-                    if (e.key === STORAGE_KEY_STORES && e.newValue) {
-                        try {
-                            const parsed = JSON.parse(e.newValue);
-                            if (Array.isArray(parsed)) {
-                                setStores(parsed);
-                                safeWriteStorage(STORAGE_KEY_STORES, parsed);
-                                appendActivityLog('[Storage] Data toko diperbarui dari tab lain');
-                                triggerSyncPulse();
-                            }
-                        } catch (err) {}
-                    } else if (e.key === STORAGE_KEY_DATA && e.newValue) {
-                        try {
-                            const parsed = JSON.parse(e.newValue);
-                            if (parsed && typeof parsed === 'object') {
-                                setAllTransactions(parsed);
-                                safeWriteStorage(STORAGE_KEY_DATA, parsed);
-                                appendActivityLog('[Storage] Input transaksi baru masuk ke server');
-                                triggerSyncPulse();
-                            }
-                        } catch (err) {}
+                    if (e.key === DB_STORAGE_KEY || e.key === SYNC_EVENT_KEY) {
+                        applySync(getSharedDB());
                     }
                 };
                 window.addEventListener('storage', onStorage);
 
+                // 4. Polling 400ms untuk memastikan perubahan cabang terdeteksi oleh Server Pusat
+                const timer = setInterval(() => {
+                    const current = getSharedDB();
+                    if (current && current.lastUpdated > lastKnownTs) {
+                        applySync(current);
+                    }
+                }, 400);
+
                 return () => {
-                    if (channelRef.current) channelRef.current.close();
+                    if (bc) bc.close();
                     window.removeEventListener('storage', onStorage);
+                    clearInterval(timer);
                 };
             }, []);
 
@@ -477,14 +499,16 @@
                         if (ok) {
                             unsubStores = window.FirebaseBridge.subscribePublicDoc('server_state', 'stores_doc', (docData) => {
                                 if (docData && Array.isArray(docData.list) && docData.list.length > 0) {
-                                    setStores(docData.list);
-                                    try { localStorage.setItem(STORAGE_KEY_STORES, JSON.stringify(docData.list)); } catch (e) {}
+                                    const newState = saveSharedDB(docData.list, allTransactions, '[Cloud] Data toko disinkronkan');
+                                    setStores(newState.stores);
+                                    triggerSyncPulse();
                                 }
                             });
                             unsubData = window.FirebaseBridge.subscribePublicDoc('server_state', 'transactions_doc', (docData) => {
                                 if (docData && docData.map && typeof docData.map === 'object') {
-                                    setAllTransactions(docData.map);
-                                    try { localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(docData.map)); } catch (e) {}
+                                    const newState = saveSharedDB(stores, docData.map, '[Cloud] Transaksi cabang masuk');
+                                    setAllTransactions(newState.transactions);
+                                    triggerSyncPulse();
                                 }
                             });
                         }
@@ -501,107 +525,82 @@
                     unsubStores();
                     unsubData();
                 };
-            }, []);
+            }, [stores, allTransactions]);
 
             const activeStore = useMemo(() => {
                 return stores.find((s) => s.id === activeStoreId) || stores[0] || INITIAL_STORES[0];
             }, [stores, activeStoreId]);
 
-            // Pantau perubahan hash URL
-            useEffect(() => {
-                const handleHashChange = () => {
-                    const rawHash = (window.location.hash || '').replace(/^#/, '').trim();
-                    if (rawHash) {
-                        setIsBranchView(true);
-                        setActiveTab('ledger');
-                        const resolved = resolveStoreFromLocation(stores);
-                        if (resolved) setActiveStoreId(resolved);
-                    } else {
-                        setIsBranchView(false);
-                        setActiveTab('dashboard');
-                    }
-                };
-                window.addEventListener('hashchange', handleHashChange);
-                return () => window.removeEventListener('hashchange', handleHashChange);
-            }, [stores]);
-
-            // Update document title sesuai mode
-            useEffect(() => {
-                if (isBranchView && activeStore) {
-                    document.title = `Buku Toko ${activeStore.code} - ${activeStore.name}`;
-                } else {
-                    document.title = `Server Pusat Multi-Toko (${stores.length} Cabang)`;
-                }
-            }, [isBranchView, activeStore, stores.length]);
-
             const currentRows = useMemo(() => {
-                const list = allTransactions[activeStore.id];
-                if (Array.isArray(list) && list.length > 0) return list;
+                const rows = allTransactions[activeStore.id];
+                if (Array.isArray(rows) && rows.length > 0) return rows;
                 return buildEmptyTransactions(getTodayISO(), 22);
             }, [allTransactions, activeStore.id]);
 
             const filteredRows = useMemo(() => {
                 const q = searchQuery.trim().toLowerCase();
-                return currentRows.filter((row) => {
-                    const omzetVal = Number(row.omzet) || 0;
-                    const belanjaVal = Number(row.belanja) || 0;
-                    if (onlyActiveDays && omzetVal <= 0 && belanjaVal <= 0) return false;
+                return currentRows.filter((r) => {
+                    const omzet = Number(r.omzet) || 0;
+                    const belanja = Number(r.belanja) || 0;
+                    if (onlyActiveDays && omzet <= 0 && belanja <= 0) return false;
                     if (!q) return true;
-                    const dispDate = formatDisplayDate(row.date).toLowerCase();
+                    const dispDate = formatDisplayDate(r.date).toLowerCase();
+                    const dayStr = (r.day || '').toLowerCase();
+                    const omzetStr = String(omzet);
+                    const belanjaStr = String(belanja);
                     return (
-                        String(row.no).includes(q) ||
-                        (row.date || '').toLowerCase().includes(q) ||
                         dispDate.includes(q) ||
-                        (row.day || '').toLowerCase().includes(q) ||
-                        String(omzetVal).includes(q) ||
-                        String(belanjaVal).includes(q)
+                        (r.date || '').toLowerCase().includes(q) ||
+                        dayStr.includes(q) ||
+                        omzetStr.includes(q) ||
+                        belanjaStr.includes(q)
                     );
                 });
             }, [currentRows, searchQuery, onlyActiveDays]);
 
             const summary = useMemo(() => {
                 let totalOmzet = 0;
+                let totalBelanja = 0;
                 let totalS75 = 0;
                 let totalS70 = 0;
                 let totalS65 = 0;
                 let totalS60 = 0;
-                let totalBelanja = 0;
                 let activeDaysCount = 0;
-                let sumPercent = 0;
+                let percentSum = 0;
 
-                currentRows.forEach((row) => {
-                    const omz = Math.max(0, Number(row.omzet) || 0);
-                    const blj = Math.max(0, Number(row.belanja) || 0);
-                    const sim = computeSimpasan(omz);
-                    const pct = computeRowPercent(row);
+                currentRows.forEach((r) => {
+                    const omzet = Math.max(0, Number(r.omzet) || 0);
+                    const belanja = Math.max(0, Number(r.belanja) || 0);
+                    const sim = computeSimpasan(omzet);
+                    const pct = computeRowPercent(r);
 
-                    totalOmzet += omz;
+                    totalOmzet += omzet;
+                    totalBelanja += belanja;
                     totalS75 += sim.s75;
                     totalS70 += sim.s70;
                     totalS65 += sim.s65;
                     totalS60 += sim.s60;
-                    totalBelanja += blj;
-                    sumPercent += pct;
-
-                    if (omz > 0) activeDaysCount += 1;
+                    percentSum += pct;
+                    if (omzet > 0 || belanja > 0) {
+                        activeDaysCount += 1;
+                    }
                 });
 
-                const divisor = activeDaysCount > 0 ? activeDaysCount : 1;
-                const avgOmzet = activeDaysCount > 0 ? totalOmzet / divisor : 0;
-                const avgS75 = activeDaysCount > 0 ? totalS75 / divisor : 0;
-                const avgS70 = activeDaysCount > 0 ? totalS70 / divisor : 0;
-                const avgS65 = activeDaysCount > 0 ? totalS65 / divisor : 0;
-                const avgS60 = activeDaysCount > 0 ? totalS60 / divisor : 0;
-                const avgPercent = currentRows.length > 0 ? Math.round(sumPercent / currentRows.length) : 0;
+                const avgOmzet = activeDaysCount > 0 ? totalOmzet / activeDaysCount : 0;
+                const avgS75 = activeDaysCount > 0 ? totalS75 / activeDaysCount : 0;
+                const avgS70 = activeDaysCount > 0 ? totalS70 / activeDaysCount : 0;
+                const avgS65 = activeDaysCount > 0 ? totalS65 / activeDaysCount : 0;
+                const avgS60 = activeDaysCount > 0 ? totalS60 / activeDaysCount : 0;
+                const avgPercent = currentRows.length > 0 ? Math.round(percentSum / currentRows.length) : 0;
                 const netDiff = totalOmzet - totalBelanja - totalS75;
 
                 return {
                     totalOmzet,
+                    totalBelanja,
                     totalS75,
                     totalS70,
                     totalS65,
                     totalS60,
-                    totalBelanja,
                     activeDaysCount,
                     avgOmzet,
                     avgS75,
@@ -614,14 +613,12 @@
             }, [currentRows]);
 
             const multiStoreSummary = useMemo(() => {
-                return stores.map((store) => {
-                    const rows = allTransactions[store.id] || [];
+                return stores.map((st) => {
+                    const rows = Array.isArray(allTransactions[st.id]) ? allTransactions[st.id] : [];
                     let omzet = 0;
+                    let belanja = 0;
                     let s75 = 0;
                     let s70 = 0;
-                    let s65 = 0;
-                    let s60 = 0;
-                    let belanja = 0;
                     let days = 0;
 
                     rows.forEach((r) => {
@@ -629,17 +626,15 @@
                         const b = Math.max(0, Number(r.belanja) || 0);
                         const sim = computeSimpasan(o);
                         omzet += o;
+                        belanja += b;
                         s75 += sim.s75;
                         s70 += sim.s70;
-                        s65 += sim.s65;
-                        s60 += sim.s60;
-                        belanja += b;
-                        if (o > 0) days += 1;
+                        if (o > 0 || b > 0) days += 1;
                     });
 
                     const avgOmzet = days > 0 ? omzet / days : 0;
                     const net = omzet - belanja - s75;
-                    return { store, days, avgOmzet, omzet, s75, s70, s65, s60, belanja, net };
+                    return { store: st, days, avgOmzet, omzet, s75, s70, belanja, net };
                 });
             }, [stores, allTransactions]);
 
