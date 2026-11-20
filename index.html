@@ -1,0 +1,1754 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Multi-Toko - Pembukuan & Skema Simpasan Real-Time</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel standalone for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Chart.js for Admin Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+        }
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #050505;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262626;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #404040;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-black text-white antialiased selection:bg-sky-500/30 selection:text-sky-200">
+    <div id="root"></div>
+
+    <!-- Firebase JS SDK v11.6.1 Module Bridge -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'server-multi-toko-v1';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+        window.FirebaseBridge = {
+            isConfigured: !!firebaseConfig,
+            appId: appId,
+            db: null,
+            user: null,
+            init: async function(onStatusChange) {
+                if (!firebaseConfig) {
+                    if (onStatusChange) onStatusChange(false, 'local');
+                    return;
+                }
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    const auth = getAuth(app);
+                    const db = getFirestore(app);
+                    window.FirebaseBridge.db = db;
+
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (token) {
+                        await signInWithCustomToken(auth, token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        window.FirebaseBridge.user = user;
+                        if (user && onStatusChange) {
+                            onStatusChange(true, 'cloud');
+                        }
+                    });
+                } catch (err) {
+                    console.warn("Firebase connection error, using local broadcast fallback:", err);
+                    if (onStatusChange) onStatusChange(false, 'local');
+                }
+            },
+            subscribePublicDoc: (collectionName, docId, callback, errorCallback) => {
+                if (!window.FirebaseBridge.db || !window.FirebaseBridge.user) return () => {};
+                const dRef = doc(window.FirebaseBridge.db, 'artifacts', appId, 'public', 'data', collectionName, docId);
+                return onSnapshot(dRef, (snap) => {
+                    if (snap.exists()) {
+                        callback(snap.data());
+                    } else {
+                        callback(null);
+                    }
+                }, errorCallback || ((err) => console.warn('Snapshot err:', err)));
+            },
+            savePublicDoc: async (collectionName, docId, data) => {
+                if (!window.FirebaseBridge.db || !window.FirebaseBridge.user) return false;
+                try {
+                    const dRef = doc(window.FirebaseBridge.db, 'artifacts', appId, 'public', 'data', collectionName, docId);
+                    await setDoc(dRef, data, { merge: true });
+                    return true;
+                } catch (err) {
+                    console.error("Firestore Save Error:", err);
+                    return false;
+                }
+            }
+        };
+
+        window.dispatchEvent(new Event('firebase-bridge-ready'));
+    </script>
+
+    <!-- App Logic inside React Babel Script -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        const STORAGE_KEY_STORES = 'server_multi_toko_stores_v5';
+        const STORAGE_KEY_DATA = 'server_multi_toko_data_v5';
+        const BROADCAST_CHANNEL_NAME = 'server_multi_toko_sync_channel_v5';
+
+        const HARI_ID = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+
+        function getTodayISO() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function getHariName(isoDateStr) {
+            const targetISO = isoDateStr || getTodayISO();
+            const parts = targetISO.split('-');
+            if (parts.length !== 3) return HARI_ID[new Date().getDay()];
+            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            if (Number.isNaN(dt.getTime())) return HARI_ID[new Date().getDay()];
+            return HARI_ID[dt.getDay()];
+        }
+
+        function formatDisplayDate(isoDateStr) {
+            const targetISO = isoDateStr || getTodayISO();
+            const parts = targetISO.split('-');
+            if (parts.length !== 3) return targetISO;
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function addDaysISO(isoDateStr, deltaDays) {
+            const parts = isoDateStr.split('-');
+            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            dt.setDate(dt.getDate() + deltaDays);
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const d = String(dt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function formatRupiah(amount) {
+            const num = Number(amount) || 0;
+            const isNegative = num < 0;
+            const absVal = Math.abs(num);
+            const hasFraction = Math.abs(absVal - Math.round(absVal)) > 0.001;
+            const formatted = new Intl.NumberFormat('id-ID', {
+                minimumFractionDigits: hasFraction ? 1 : 0,
+                maximumFractionDigits: hasFraction ? 1 : 0
+            }).format(absVal);
+            return `${isNegative ? '-' : ''}Rp${formatted}`;
+        }
+
+        function formatAvgRupiah(amount) {
+            const num = Number(amount) || 0;
+            const isNegative = num < 0;
+            const absVal = Math.abs(num);
+            const rounded = Math.round(absVal);
+            const formatted = new Intl.NumberFormat('id-ID', {
+                maximumFractionDigits: 0
+            }).format(rounded);
+            return `${isNegative ? '-' : ''}Rp${formatted}`;
+        }
+
+        function computeSimpasan(omzet) {
+            const val = Math.max(0, Number(omzet) || 0);
+            return {
+                s75: val * 0.075,
+                s70: val * 0.070,
+                s65: val * 0.065,
+                s60: val * 0.060
+            };
+        }
+
+        function computeRowPercent(row) {
+            if (!row) return 0;
+            if (row.customPercent !== '' && row.customPercent !== undefined && row.customPercent !== null) {
+                const parsed = Number(row.customPercent);
+                if (!Number.isNaN(parsed)) return Math.max(0, Math.min(100, Math.round(parsed)));
+            }
+            const omzet = Math.max(0, Number(row.omzet) || 0);
+            const belanja = Math.max(0, Number(row.belanja) || 0);
+            if (omzet <= 0) return 0;
+            return Math.max(0, Math.min(100, Math.round((belanja / omzet) * 100)));
+        }
+
+        function getStoreHash(storeCode) {
+            const slug = (storeCode || 'TK-01').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
+            return `#${slug}`;
+        }
+
+        function getFullStoreLink(storeCode) {
+            const hash = getStoreHash(storeCode);
+            try {
+                const base = window.location.href.split('#')[0];
+                return `${base}${hash}`;
+            } catch (e) {
+                return hash;
+            }
+        }
+
+        function resolveStoreFromLocation(storesList) {
+            if (!storesList || storesList.length === 0) return null;
+            try {
+                const rawHash = (window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+                if (rawHash) {
+                    const matched = storesList.find(s =>
+                        s.code.toLowerCase() === rawHash ||
+                        s.id.toLowerCase() === rawHash ||
+                        s.code.toLowerCase().replace(/[^a-z0-9-]/g, '-') === rawHash
+                    );
+                    if (matched) return matched.id;
+                    const idxNum = Number(rawHash);
+                    if (Number.isInteger(idxNum) && idxNum >= 1 && idxNum <= storesList.length) {
+                        return storesList[idxNum - 1].id;
+                    }
+                }
+            } catch (e) {}
+            return storesList[0].id;
+        }
+
+        const INITIAL_STORES = [
+            { id: 'toko-1', code: 'TK-01', name: 'Toko Pusat Utama', location: 'Jl. Merdeka No. 1', manager: 'Admin Pusat' },
+            { id: 'toko-2', code: 'TK-02', name: 'Toko Cabang Barat', location: 'Jl. Sudirman No. 45', manager: 'Budi Santoso' },
+            { id: 'toko-3', code: 'TK-03', name: 'Toko Cabang Timur', location: 'Jl. Ahmad Yani No. 88', manager: 'Siti Rahma' }
+        ];
+
+        function buildEmptyTransactions(endDateISO = getTodayISO(), totalDays = 22) {
+            const startISO = addDaysISO(endDateISO, -(totalDays - 1));
+            const rows = [];
+            for (let i = 0; i < totalDays; i++) {
+                const dateStr = addDaysISO(startISO, i);
+                rows.push({
+                    id: `row-${i + 1}-${dateStr}`,
+                    no: i + 1,
+                    date: dateStr,
+                    day: getHariName(dateStr),
+                    omzet: 0,
+                    belanja: 0,
+                    customPercent: ''
+                });
+            }
+            return rows;
+        }
+
+        function buildInitialAllData(storesList, endDateISO = getTodayISO()) {
+            const map = {};
+            storesList.forEach((st) => {
+                map[st.id] = buildEmptyTransactions(endDateISO, 22);
+            });
+            return map;
+        }
+
+        function App() {
+            const [stores, setStores] = useState(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY_STORES);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    }
+                } catch (e) {}
+                return INITIAL_STORES;
+            });
+
+            const [allTransactions, setAllTransactions] = useState(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY_DATA);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && typeof parsed === 'object') return parsed;
+                    }
+                } catch (e) {}
+                return buildInitialAllData(INITIAL_STORES, getTodayISO());
+            });
+
+            // Jika URL memiliki hash (#tk-01, #tk-02, dst), tampilan murni Buku Toko cabang tersebut saja.
+            // Jika URL utama (tanpa hash), tampilan adalah Server Pusat yang memantau semua toko.
+            const [isBranchView, setIsBranchView] = useState(() => {
+                const hash = (window.location.hash || '').replace(/^#/, '').trim();
+                return Boolean(hash);
+            });
+
+            const [syncMode, setSyncMode] = useState('local');
+            const [activeStoreId, setActiveStoreId] = useState(() => resolveStoreFromLocation(stores) || INITIAL_STORES[0].id);
+            const [activeTab, setActiveTab] = useState(() => {
+                const hash = (window.location.hash || '').replace(/^#/, '').trim();
+                return hash ? 'ledger' : 'dashboard';
+            });
+
+            const [searchQuery, setSearchQuery] = useState('');
+            const [onlyActiveDays, setOnlyActiveDays] = useState(false);
+
+            // Form Input Harian
+            const [newDate, setNewDate] = useState(() => getTodayISO());
+            const [newOmzet, setNewOmzet] = useState('');
+            const [newBelanja, setNewBelanja] = useState('');
+            const [newPercent, setNewPercent] = useState('');
+
+            // Form Kelola Toko
+            const [editingStoreId, setEditingStoreId] = useState(null);
+            const [newStoreCode, setNewStoreCode] = useState('');
+            const [newStoreName, setNewStoreName] = useState('');
+            const [newStoreLocation, setNewStoreLocation] = useState('');
+            const [newStoreManager, setNewStoreManager] = useState('');
+
+            // Toast Notification
+            const [toastMessage, setToastMessage] = useState('');
+            const chartCanvasRef = useRef(null);
+            const chartInstanceRef = useRef(null);
+            const channelRef = useRef(null);
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => {
+                    setToastMessage((prev) => (prev === msg ? '' : prev));
+                }, 3200);
+            };
+
+            // Simpan ke localStorage & broadcast ke tab/jendela lain + cloud
+            const persistStores = (updatedStores) => {
+                setStores(updatedStores);
+                try {
+                    localStorage.setItem(STORAGE_KEY_STORES, JSON.stringify(updatedStores));
+                } catch (e) {}
+                if (channelRef.current) {
+                    channelRef.current.postMessage({ type: 'SYNC_STORES', payload: updatedStores });
+                }
+                if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
+                    window.FirebaseBridge.savePublicDoc('server_state', 'stores_doc', { list: updatedStores, updatedAt: Date.now() });
+                }
+            };
+
+            const persistTransactions = (updatedMap) => {
+                setAllTransactions(updatedMap);
+                try {
+                    localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(updatedMap));
+                } catch (e) {}
+                if (channelRef.current) {
+                    channelRef.current.postMessage({ type: 'SYNC_DATA', payload: updatedMap });
+                }
+                if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
+                    window.FirebaseBridge.savePublicDoc('server_state', 'transactions_doc', { map: updatedMap, updatedAt: Date.now() });
+                }
+            };
+
+            // Setup BroadcastChannel & Storage listener antar tab/browser
+            useEffect(() => {
+                try {
+                    const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+                    channelRef.current = bc;
+                    bc.onmessage = (event) => {
+                        if (!event || !event.data) return;
+                        if (event.data.type === 'SYNC_STORES' && Array.isArray(event.data.payload)) {
+                            setStores(event.data.payload);
+                        } else if (event.data.type === 'SYNC_DATA' && event.data.payload) {
+                            setAllTransactions(event.data.payload);
+                        }
+                    };
+                } catch (e) {}
+
+                const onStorage = (e) => {
+                    if (e.key === STORAGE_KEY_STORES && e.newValue) {
+                        try {
+                            const parsed = JSON.parse(e.newValue);
+                            if (Array.isArray(parsed)) setStores(parsed);
+                        } catch (err) {}
+                    } else if (e.key === STORAGE_KEY_DATA && e.newValue) {
+                        try {
+                            const parsed = JSON.parse(e.newValue);
+                            if (parsed && typeof parsed === 'object') setAllTransactions(parsed);
+                        } catch (err) {}
+                    }
+                };
+                window.addEventListener('storage', onStorage);
+
+                return () => {
+                    if (channelRef.current) channelRef.current.close();
+                    window.removeEventListener('storage', onStorage);
+                };
+            }, []);
+
+            // Setup Firebase Cloud Sync jika tersedia
+            useEffect(() => {
+                let unsubStores = () => {};
+                let unsubData = () => {};
+
+                const connectCloud = () => {
+                    if (!window.FirebaseBridge) return;
+                    window.FirebaseBridge.init((ok, mode) => {
+                        setSyncMode(mode || 'local');
+                        if (ok) {
+                            unsubStores = window.FirebaseBridge.subscribePublicDoc('server_state', 'stores_doc', (docData) => {
+                                if (docData && Array.isArray(docData.list) && docData.list.length > 0) {
+                                    setStores(docData.list);
+                                    try { localStorage.setItem(STORAGE_KEY_STORES, JSON.stringify(docData.list)); } catch (e) {}
+                                }
+                            });
+                            unsubData = window.FirebaseBridge.subscribePublicDoc('server_state', 'transactions_doc', (docData) => {
+                                if (docData && docData.map && typeof docData.map === 'object') {
+                                    setAllTransactions(docData.map);
+                                    try { localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(docData.map)); } catch (e) {}
+                                }
+                            });
+                        }
+                    });
+                };
+
+                if (window.FirebaseBridge) {
+                    connectCloud();
+                } else {
+                    window.addEventListener('firebase-bridge-ready', connectCloud, { once: true });
+                }
+
+                return () => {
+                    unsubStores();
+                    unsubData();
+                };
+            }, []);
+
+            const activeStore = useMemo(() => {
+                return stores.find((s) => s.id === activeStoreId) || stores[0] || INITIAL_STORES[0];
+            }, [stores, activeStoreId]);
+
+            // Pantau perubahan hash URL
+            useEffect(() => {
+                const handleHashChange = () => {
+                    const rawHash = (window.location.hash || '').replace(/^#/, '').trim();
+                    if (rawHash) {
+                        setIsBranchView(true);
+                        setActiveTab('ledger');
+                        const resolved = resolveStoreFromLocation(stores);
+                        if (resolved) setActiveStoreId(resolved);
+                    } else {
+                        setIsBranchView(false);
+                        setActiveTab('dashboard');
+                    }
+                };
+                window.addEventListener('hashchange', handleHashChange);
+                return () => window.removeEventListener('hashchange', handleHashChange);
+            }, [stores]);
+
+            // Update document title sesuai mode
+            useEffect(() => {
+                if (isBranchView && activeStore) {
+                    document.title = `Buku Toko ${activeStore.code} - ${activeStore.name}`;
+                } else {
+                    document.title = `Server Pusat Multi-Toko (${stores.length} Cabang)`;
+                }
+            }, [isBranchView, activeStore, stores.length]);
+
+            const currentRows = useMemo(() => {
+                const list = allTransactions[activeStore.id];
+                if (Array.isArray(list) && list.length > 0) return list;
+                return buildEmptyTransactions(getTodayISO(), 22);
+            }, [allTransactions, activeStore.id]);
+
+            const filteredRows = useMemo(() => {
+                const q = searchQuery.trim().toLowerCase();
+                return currentRows.filter((row) => {
+                    const omzetVal = Number(row.omzet) || 0;
+                    const belanjaVal = Number(row.belanja) || 0;
+                    if (onlyActiveDays && omzetVal <= 0 && belanjaVal <= 0) return false;
+                    if (!q) return true;
+                    const dispDate = formatDisplayDate(row.date).toLowerCase();
+                    return (
+                        String(row.no).includes(q) ||
+                        (row.date || '').toLowerCase().includes(q) ||
+                        dispDate.includes(q) ||
+                        (row.day || '').toLowerCase().includes(q) ||
+                        String(omzetVal).includes(q) ||
+                        String(belanjaVal).includes(q)
+                    );
+                });
+            }, [currentRows, searchQuery, onlyActiveDays]);
+
+            const summary = useMemo(() => {
+                let totalOmzet = 0;
+                let totalS75 = 0;
+                let totalS70 = 0;
+                let totalS65 = 0;
+                let totalS60 = 0;
+                let totalBelanja = 0;
+                let activeDaysCount = 0;
+                let sumPercent = 0;
+
+                currentRows.forEach((row) => {
+                    const omz = Math.max(0, Number(row.omzet) || 0);
+                    const blj = Math.max(0, Number(row.belanja) || 0);
+                    const sim = computeSimpasan(omz);
+                    const pct = computeRowPercent(row);
+
+                    totalOmzet += omz;
+                    totalS75 += sim.s75;
+                    totalS70 += sim.s70;
+                    totalS65 += sim.s65;
+                    totalS60 += sim.s60;
+                    totalBelanja += blj;
+                    sumPercent += pct;
+
+                    if (omz > 0) activeDaysCount += 1;
+                });
+
+                const divisor = activeDaysCount > 0 ? activeDaysCount : 1;
+                const avgOmzet = activeDaysCount > 0 ? totalOmzet / divisor : 0;
+                const avgS75 = activeDaysCount > 0 ? totalS75 / divisor : 0;
+                const avgS70 = activeDaysCount > 0 ? totalS70 / divisor : 0;
+                const avgS65 = activeDaysCount > 0 ? totalS65 / divisor : 0;
+                const avgS60 = activeDaysCount > 0 ? totalS60 / divisor : 0;
+                const avgPercent = currentRows.length > 0 ? Math.round(sumPercent / currentRows.length) : 0;
+                const netDiff = totalOmzet - totalBelanja - totalS75;
+
+                return {
+                    totalOmzet,
+                    totalS75,
+                    totalS70,
+                    totalS65,
+                    totalS60,
+                    totalBelanja,
+                    activeDaysCount,
+                    avgOmzet,
+                    avgS75,
+                    avgS70,
+                    avgS65,
+                    avgS60,
+                    avgPercent,
+                    netDiff
+                };
+            }, [currentRows]);
+
+            const multiStoreSummary = useMemo(() => {
+                return stores.map((store) => {
+                    const rows = allTransactions[store.id] || [];
+                    let omzet = 0;
+                    let s75 = 0;
+                    let s70 = 0;
+                    let s65 = 0;
+                    let s60 = 0;
+                    let belanja = 0;
+                    let days = 0;
+
+                    rows.forEach((r) => {
+                        const o = Math.max(0, Number(r.omzet) || 0);
+                        const b = Math.max(0, Number(r.belanja) || 0);
+                        const sim = computeSimpasan(o);
+                        omzet += o;
+                        s75 += sim.s75;
+                        s70 += sim.s70;
+                        s65 += sim.s65;
+                        s60 += sim.s60;
+                        belanja += b;
+                        if (o > 0) days += 1;
+                    });
+
+                    const avgOmzet = days > 0 ? omzet / days : 0;
+                    const net = omzet - belanja - s75;
+                    return { store, days, avgOmzet, omzet, s75, s70, s65, s60, belanja, net };
+                });
+            }, [stores, allTransactions]);
+
+            const grandTotals = useMemo(() => {
+                return multiStoreSummary.reduce(
+                    (acc, item) => {
+                        acc.omzet += item.omzet;
+                        acc.s75 += item.s75;
+                        acc.s70 += item.s70;
+                        acc.belanja += item.belanja;
+                        acc.days += item.days;
+                        acc.net += item.net;
+                        return acc;
+                    },
+                    { omzet: 0, s75: 0, s70: 0, belanja: 0, days: 0, net: 0 }
+                );
+            }, [multiStoreSummary]);
+
+            // Chart.js pada Dashboard Server Pusat
+            useEffect(() => {
+                if (isBranchView || activeTab !== 'dashboard' || !chartCanvasRef.current || typeof Chart === 'undefined') {
+                    return;
+                }
+                if (chartInstanceRef.current) {
+                    chartInstanceRef.current.destroy();
+                }
+
+                const ctx = chartCanvasRef.current.getContext('2d');
+                chartInstanceRef.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: multiStoreSummary.map((m) => `${m.store.code} (${m.store.name})`),
+                        datasets: [
+                            {
+                                label: 'Total Omset',
+                                data: multiStoreSummary.map((m) => m.omzet),
+                                backgroundColor: '#38bdf8',
+                                borderRadius: 6
+                            },
+                            {
+                                label: 'Simpasan 7.5%',
+                                data: multiStoreSummary.map((m) => m.s75),
+                                backgroundColor: '#84cc16',
+                                borderRadius: 6
+                            },
+                            {
+                                label: 'Total Belanja',
+                                data: multiStoreSummary.map((m) => m.belanja),
+                                backgroundColor: '#c084fc',
+                                borderRadius: 6
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#e2e8f0', font: { family: 'Inter', size: 12 } }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(255,255,255,0.06)' }
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#94a3b8',
+                                    callback: (v) => 'Rp' + Number(v).toLocaleString('id-ID')
+                                },
+                                grid: { color: 'rgba(255,255,255,0.06)' }
+                            }
+                        }
+                    }
+                });
+
+                return () => {
+                    if (chartInstanceRef.current) {
+                        chartInstanceRef.current.destroy();
+                        chartInstanceRef.current = null;
+                    }
+                };
+            }, [isBranchView, activeTab, multiStoreSummary]);
+
+            // Handlers Transaksi Buku Toko
+            const handleInlineUpdate = (rowId, field, value) => {
+                const updatedRows = currentRows.map((row) => {
+                    if (row.id !== rowId) return row;
+                    if (field === 'date') {
+                        return { ...row, date: value, day: getHariName(value) };
+                    }
+                    if (field === 'omzet' || field === 'belanja') {
+                        const numVal = value === '' ? 0 : Math.max(0, Number(value) || 0);
+                        return { ...row, [field]: numVal };
+                    }
+                    return { ...row, [field]: value };
+                });
+                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+            };
+
+            const handleSaveTransaction = (e) => {
+                e.preventDefault();
+                const targetDate = newDate || getTodayISO();
+                const omzVal = Math.max(0, Number(newOmzet) || 0);
+                const bljVal = Math.max(0, Number(newBelanja) || 0);
+                const pctVal = newPercent === '' ? '' : Math.max(0, Math.min(100, Number(newPercent) || 0));
+
+                const existingIdx = currentRows.findIndex((r) => r.date === targetDate);
+                let updatedRows = [];
+                if (existingIdx >= 0) {
+                    updatedRows = currentRows.map((r, idx) =>
+                        idx === existingIdx
+                            ? { ...r, day: getHariName(targetDate), omzet: omzVal, belanja: bljVal, customPercent: pctVal }
+                            : r
+                    );
+                } else {
+                    const nextNo = currentRows.length + 1;
+                    updatedRows = [
+                        ...currentRows,
+                        {
+                            id: `row-${Date.now()}`,
+                            no: nextNo,
+                            date: targetDate,
+                            day: getHariName(targetDate),
+                            omzet: omzVal,
+                            belanja: bljVal,
+                            customPercent: pctVal
+                        }
+                    ];
+                }
+
+                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+                setNewOmzet('');
+                setNewBelanja('');
+                setNewPercent('');
+                showToast(`Data ${formatDisplayDate(targetDate)} tersimpan & dikirim ke pusat.`);
+            };
+
+            const handleAddNextDayRow = () => {
+                const lastRow = currentRows[currentRows.length - 1];
+                const nextDate = lastRow && lastRow.date ? addDaysISO(lastRow.date, 1) : getTodayISO();
+                const nextNo = currentRows.length + 1;
+                const updatedRows = [
+                    ...currentRows,
+                    {
+                        id: `row-${Date.now()}-${nextNo}`,
+                        no: nextNo,
+                        date: nextDate,
+                        day: getHariName(nextDate),
+                        omzet: 0,
+                        belanja: 0,
+                        customPercent: ''
+                    }
+                ];
+                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+                showToast(`Baris tanggal ${formatDisplayDate(nextDate)} ditambahkan.`);
+            };
+
+            const handleClearRow = (rowId) => {
+                const updatedRows = currentRows.map((r) =>
+                    r.id === rowId ? { ...r, omzet: 0, belanja: 0, customPercent: '' } : r
+                );
+                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+            };
+
+            const handleDeleteRow = (rowId) => {
+                if (currentRows.length <= 1) {
+                    handleClearRow(rowId);
+                    return;
+                }
+                const filtered = currentRows
+                    .filter((r) => r.id !== rowId)
+                    .map((r, i) => ({ ...r, no: i + 1 }));
+                persistTransactions({ ...allTransactions, [activeStore.id]: filtered });
+            };
+
+            const handleResetCurrentStore = () => {
+                const resetRows = buildEmptyTransactions(getTodayISO(), 22);
+                persistTransactions({ ...allTransactions, [activeStore.id]: resetRows });
+                showToast(`Omset ${activeStore.name} dikosongkan.`);
+            };
+
+            const handleExportCSV = () => {
+                const headers = ['NO', 'Tanggal', 'Hari', 'Omset/Hari', 'Simpasan 7.5%', 'Simpasan 7%', 'Simpasan 6.5%', 'Simpasan 6%', 'Total Belanja', 'Persen'];
+                const lines = [headers.join(',')];
+                currentRows.forEach((r) => {
+                    const s = computeSimpasan(r.omzet);
+                    const pct = computeRowPercent(r);
+                    lines.push([
+                        r.no,
+                        formatDisplayDate(r.date),
+                        r.day,
+                        r.omzet,
+                        Math.round(s.s75),
+                        Math.round(s.s70),
+                        Math.round(s.s65),
+                        Math.round(s.s60),
+                        r.belanja,
+                        `${pct}%`
+                    ].join(','));
+                });
+                const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Buku_Toko_${activeStore.code}_${getTodayISO()}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // Salin Link Cabang
+            const handleCopyStoreLink = (storeObj) => {
+                const fullUrl = getFullStoreLink(storeObj.code);
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = fullUrl;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    showToast(`Link cabang ${storeObj.code} (${getStoreHash(storeObj.code)}) disalin!`);
+                } catch (e) {
+                    showToast(`Link cabang: ${fullUrl}`);
+                }
+            };
+
+            // Handlers Kelola Toko (Pusat)
+            const handleSaveStoreForm = (e) => {
+                e.preventDefault();
+                const codeClean = newStoreCode.trim().toUpperCase();
+                const nameClean = newStoreName.trim();
+                if (!codeClean || !nameClean) {
+                    showToast('Kode Toko dan Nama Toko wajib diisi.');
+                    return;
+                }
+
+                if (editingStoreId) {
+                    const updatedStores = stores.map((st) =>
+                        st.id === editingStoreId
+                            ? {
+                                  ...st,
+                                  code: codeClean,
+                                  name: nameClean,
+                                  location: newStoreLocation.trim() || '-',
+                                  manager: newStoreManager.trim() || '-'
+                              }
+                            : st
+                    );
+                    persistStores(updatedStores);
+                    setEditingStoreId(null);
+                    showToast(`Data toko ${codeClean} diperbarui.`);
+                } else {
+                    const newId = `toko-${Date.now()}`;
+                    const newStore = {
+                        id: newId,
+                        code: codeClean,
+                        name: nameClean,
+                        location: newStoreLocation.trim() || '-',
+                        manager: newStoreManager.trim() || '-'
+                    };
+                    const updatedStores = [...stores, newStore];
+                    const updatedData = {
+                        ...allTransactions,
+                        [newId]: buildEmptyTransactions(getTodayISO(), 22)
+                    };
+                    persistStores(updatedStores);
+                    persistTransactions(updatedData);
+                    showToast(`Toko baru ${codeClean} (${getStoreHash(codeClean)}) ditambahkan.`);
+                }
+
+                setNewStoreCode('');
+                setNewStoreName('');
+                setNewStoreLocation('');
+                setNewStoreManager('');
+            };
+
+            const handleStartEditStore = (st) => {
+                setEditingStoreId(st.id);
+                setNewStoreCode(st.code);
+                setNewStoreName(st.name);
+                setNewStoreLocation(st.location === '-' ? '' : st.location);
+                setNewStoreManager(st.manager === '-' ? '' : st.manager);
+            };
+
+            const handleDeleteStore = (storeId) => {
+                if (stores.length <= 1) {
+                    showToast('Minimal harus ada 1 toko aktif di server.');
+                    return;
+                }
+                const updatedStores = stores.filter((s) => s.id !== storeId);
+                const updatedData = { ...allTransactions };
+                delete updatedData[storeId];
+                persistStores(updatedStores);
+                persistTransactions(updatedData);
+                if (activeStoreId === storeId) {
+                    setActiveStoreId(updatedStores[0].id);
+                }
+                showToast('Toko berhasil dihapus dari server.');
+            };
+
+            const todayISO = getTodayISO();
+            const todayHari = getHariName(todayISO);
+            const todayDisplay = formatDisplayDate(todayISO);
+
+            return (
+                <div className="min-h-screen flex flex-col bg-black text-white">
+                    {/* Toast Notification */}
+                    {toastMessage && (
+                        <div className="fixed bottom-5 right-5 z-50 bg-sky-500 text-black font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-2xl border border-sky-300">
+                            {toastMessage}
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <header className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-neutral-800">
+                        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-sm sm:text-base shadow-lg ${
+                                            isBranchView
+                                                ? 'bg-emerald-500 text-black shadow-emerald-500/20'
+                                                : 'bg-sky-500 text-black shadow-sky-500/20'
+                                        }`}
+                                    >
+                                        {isBranchView ? activeStore.code : 'SRV'}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">
+                                                {isBranchView
+                                                    ? `Buku Toko — ${activeStore.name}`
+                                                    : 'Server Pusat Multi-Toko'}
+                                            </h1>
+                                            <span
+                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                                    syncMode === 'cloud'
+                                                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                                        : 'bg-sky-500/10 text-sky-300 border-sky-500/30'
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`w-1.5 h-1.5 rounded-full ${
+                                                        syncMode === 'cloud' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'
+                                                    }`}
+                                                ></span>
+                                                {isBranchView ? 'Terhubung ke Pusat' : 'Pantau Live'}
+                                            </span>
+                                            <span className="text-xs text-slate-400 capitalize">
+                                                • {todayHari}, {todayDisplay}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-400">
+                                            {isBranchView
+                                                ? `Cabang ${activeStore.code} • ${activeStore.location} • PIC: ${activeStore.manager}`
+                                                : `Kontrol & Pemantauan Real-Time (${stores.length} Cabang Toko)`}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Pemilih Toko hanya tampil di Server Pusat */}
+                                {!isBranchView && (
+                                    <div className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 rounded-xl px-2.5 py-1.5">
+                                        <label htmlFor="store-select-nav" className="text-xs font-semibold text-slate-400 whitespace-nowrap">
+                                            Pantau Toko:
+                                        </label>
+                                        <select
+                                            id="store-select-nav"
+                                            value={activeStore.id}
+                                            onChange={(e) => setActiveStoreId(e.target.value)}
+                                            className="bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer pr-1"
+                                        >
+                                            {stores.map((st) => (
+                                                <option key={st.id} value={st.id} className="bg-neutral-950 text-white">
+                                                    {st.code} — {st.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Navigasi Tab hanya tampil di Server Pusat */}
+                            {!isBranchView && (
+                                <nav className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('dashboard')}
+                                        className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition cursor-pointer ${
+                                            activeTab === 'dashboard'
+                                                ? 'bg-sky-500 text-black shadow-md shadow-sky-500/20'
+                                                : 'bg-neutral-950 text-slate-300 hover:bg-neutral-900 border border-neutral-800'
+                                        }`}
+                                    >
+                                        Pantau Semua Toko
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('ledger')}
+                                        className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition cursor-pointer ${
+                                            activeTab === 'ledger'
+                                                ? 'bg-sky-500 text-black shadow-md shadow-sky-500/20'
+                                                : 'bg-neutral-950 text-slate-300 hover:bg-neutral-900 border border-neutral-800'
+                                        }`}
+                                    >
+                                        Buku Toko ({activeStore.code})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('stores')}
+                                        className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition cursor-pointer ${
+                                            activeTab === 'stores'
+                                                ? 'bg-sky-500 text-black shadow-md shadow-sky-500/20'
+                                                : 'bg-neutral-950 text-slate-300 hover:bg-neutral-900 border border-neutral-800'
+                                        }`}
+                                    >
+                                        Kelola Toko & Link
+                                    </button>
+                                </nav>
+                            )}
+                        </div>
+                    </header>
+
+                    {/* Konten Utama */}
+                    <main className="flex-1 max-w-[1600px] w-full mx-auto px-3 sm:px-6 py-5 space-y-6">
+                        {(isBranchView || activeTab === 'ledger') && (
+                            <div className="space-y-6">
+                                {/* Info Banner Buku Toko */}
+                                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-xl">
+                                    <div className="space-y-1.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-xs font-bold">
+                                                {activeStore.code}
+                                            </span>
+                                            <h2 className="text-lg sm:text-xl font-bold text-white">
+                                                {activeStore.name}
+                                            </h2>
+                                            <span className="text-xs text-slate-400">
+                                                • {activeStore.location} • PIC: {activeStore.manager}
+                                            </span>
+                                        </div>
+
+                                        {!isBranchView && (
+                                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                <span className="text-slate-400">Link Khusus Cabang Ini:</span>
+                                                <code className="px-2.5 py-1 rounded-lg bg-black border border-neutral-800 text-sky-300 font-mono">
+                                                    {getStoreHash(activeStore.code)}
+                                                </code>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyStoreLink(activeStore)}
+                                                    className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-700 font-semibold transition cursor-pointer"
+                                                >
+                                                    Salin Link Cabang
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleAddNextDayRow}
+                                            className="px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-slate-100 border border-neutral-700 text-xs font-semibold transition cursor-pointer"
+                                        >
+                                            + Tambah Baris Tanggal
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleExportCSV}
+                                            className="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-semibold transition cursor-pointer"
+                                        >
+                                            Export CSV
+                                        </button>
+                                        {!isBranchView && (
+                                            <button
+                                                type="button"
+                                                onClick={handleResetCurrentStore}
+                                                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-semibold transition cursor-pointer"
+                                            >
+                                                Kosongkan Omset
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Top KPI Cards */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
+                                    <div className="bg-sky-500 text-black rounded-2xl p-4 shadow-lg">
+                                        <div className="text-xs font-bold uppercase tracking-wider opacity-80">Omset Rata-Rata</div>
+                                        <div className="text-2xl sm:text-3xl font-extrabold mt-1">
+                                            {formatAvgRupiah(summary.avgOmzet)}
+                                        </div>
+                                        <div className="text-xs font-semibold mt-1 opacity-80">
+                                            Hari aktif terisi: {summary.activeDaysCount} / {currentRows.length} hari
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-lg">
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Omset Toko</div>
+                                        <div className="text-2xl font-extrabold text-lime-400 mt-1">
+                                            {formatRupiah(summary.totalOmzet)}
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">
+                                            Akumulasi {currentRows.length} baris tanggal
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-lg">
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Simpasan (7.5%)</div>
+                                        <div className="text-2xl font-extrabold text-yellow-300 mt-1">
+                                            {formatRupiah(summary.totalS75)}
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">
+                                            Rata-rata/hari aktif: {formatAvgRupiah(summary.avgS75)}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-lg">
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Belanja & Selisih</div>
+                                        <div className="text-xl font-extrabold text-purple-300 mt-1">
+                                            {formatRupiah(summary.totalBelanja)}
+                                        </div>
+                                        <div className={`text-xs font-semibold mt-1 ${summary.netDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            Selisih (Omset - Belanja - 7.5%): {formatRupiah(summary.netDiff)}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Form Input Harian */}
+                                <section className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                                        <div>
+                                            <h3 className="text-sm sm:text-base font-bold text-white">
+                                                Input Transaksi Harian ({activeStore.code})
+                                            </h3>
+                                            <p className="text-xs text-slate-400">
+                                                Ketik langsung pada tabel di bawah atau isi form ini. Data otomatis terpantau oleh Server Pusat.
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setOnlyActiveDays((prev) => !prev)}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                                                    onlyActiveDays
+                                                        ? 'bg-sky-500 text-black border-sky-400'
+                                                        : 'bg-black text-slate-300 border-neutral-800 hover:bg-neutral-900'
+                                                }`}
+                                            >
+                                                {onlyActiveDays ? 'Tampilkan Semua Hari' : 'Filter Hari Terisi'}
+                                            </button>
+                                            <input
+                                                type="text"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                placeholder="Cari tanggal / hari / omzet..."
+                                                className="w-full sm:w-56 rounded-xl bg-black border border-neutral-800 px-3 py-1.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleSaveTransaction} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Tanggal</label>
+                                            <input
+                                                type="date"
+                                                value={newDate}
+                                                onChange={(e) => setNewDate(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Hari (Otomatis)</label>
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={getHariName(newDate) || '-'}
+                                                className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm font-medium text-slate-300 capitalize"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Omset / Hari (Rp)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                placeholder="0"
+                                                value={newOmzet}
+                                                onChange={(e) => setNewOmzet(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white tabular-nums focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Total Belanja (Rp)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                placeholder="0"
+                                                value={newBelanja}
+                                                onChange={(e) => setNewBelanja(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white tabular-nums focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Persen (%) Opsional</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="any"
+                                                placeholder="Otomatis"
+                                                value={newPercent}
+                                                onChange={(e) => setNewPercent(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white tabular-nums focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <button
+                                                type="submit"
+                                                className="w-full rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold py-2 px-4 text-sm shadow-md transition cursor-pointer"
+                                            >
+                                                Simpan Data
+                                            </button>
+                                        </div>
+                                    </form>
+                                </section>
+
+                                {/* Tabel Pembukuan Harian */}
+                                <section className="bg-neutral-950 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-xs sm:text-[13px] tabular-nums">
+                                            <thead>
+                                                <tr className="bg-neutral-900 text-white font-bold border-b border-neutral-800">
+                                                    <th className="py-2.5 px-2.5 border-r border-neutral-800 text-center w-12">NO.</th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-left min-w-[125px]">tanggal</th>
+                                                    <th className="py-2.5 px-2.5 border-r border-neutral-800 text-left w-24">hari</th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[140px]">omset/hari</th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[125px] bg-[#84cc16] text-black">
+                                                        Simpasan 7.5%
+                                                    </th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[125px] bg-[#facc15] text-black">
+                                                        Simpasan 7%
+                                                    </th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[125px] bg-[#f59e0b] text-black">
+                                                        Simpasan 6.5%
+                                                    </th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[125px] bg-[#ef4444] text-white">
+                                                        simpasan 6%
+                                                    </th>
+                                                    <th className="py-2.5 px-3 border-r border-neutral-800 text-right min-w-[130px]">total belanja</th>
+                                                    <th className="py-2.5 px-2.5 border-r border-neutral-800 text-center w-20">persen</th>
+                                                    <th className="py-2.5 px-2 text-center w-24">aksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="11" className="py-8 text-center text-slate-400">
+                                                            Tidak ada data baris yang cocok dengan filter/pencarian.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredRows.map((row) => {
+                                                        const sim = computeSimpasan(row.omzet);
+                                                        const pct = computeRowPercent(row);
+                                                        const hasValue = (Number(row.omzet) || 0) > 0 || (Number(row.belanja) || 0) > 0;
+                                                        return (
+                                                            <tr
+                                                                key={row.id}
+                                                                className={`border-b border-neutral-800/80 transition ${
+                                                                    hasValue ? 'bg-neutral-900/50 hover:bg-neutral-900' : 'bg-black hover:bg-neutral-950'
+                                                                }`}
+                                                            >
+                                                                <td className="py-1.5 px-2 border-r border-neutral-800 text-center font-semibold text-slate-400">
+                                                                    {row.no}
+                                                                </td>
+                                                                <td className="py-1.5 px-2 border-r border-neutral-800 text-left font-medium text-sky-300">
+                                                                    <input
+                                                                        type="date"
+                                                                        value={row.date || ''}
+                                                                        onChange={(e) => handleInlineUpdate(row.id, 'date', e.target.value)}
+                                                                        aria-label={`Tanggal baris ${row.no}`}
+                                                                        className="w-full bg-transparent text-sky-300 font-medium focus:outline-none focus:bg-neutral-900 rounded px-1 py-0.5"
+                                                                    />
+                                                                </td>
+                                                                <td className="py-1.5 px-2.5 border-r border-neutral-800 text-left text-slate-300 capitalize">
+                                                                    {row.day}
+                                                                </td>
+                                                                <td className="py-1.5 px-2 border-r border-neutral-800 text-right">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="any"
+                                                                        value={row.omzet === 0 ? '' : row.omzet}
+                                                                        placeholder="0"
+                                                                        onChange={(e) => handleInlineUpdate(row.id, 'omzet', e.target.value)}
+                                                                        aria-label={`Omset baris ${row.no}`}
+                                                                        className="w-full text-right bg-transparent text-white font-semibold tabular-nums focus:outline-none focus:bg-neutral-900 rounded px-1.5 py-0.5"
+                                                                    />
+                                                                </td>
+                                                                <td className="py-1.5 px-3 border-r border-neutral-800 text-right font-semibold bg-[#84cc16]/90 text-black">
+                                                                    {formatRupiah(sim.s75)}
+                                                                </td>
+                                                                <td className="py-1.5 px-3 border-r border-neutral-800 text-right font-semibold bg-[#facc15]/90 text-black">
+                                                                    {formatRupiah(sim.s70)}
+                                                                </td>
+                                                                <td className="py-1.5 px-3 border-r border-neutral-800 text-right font-semibold bg-[#f59e0b]/90 text-black">
+                                                                    {formatRupiah(sim.s65)}
+                                                                </td>
+                                                                <td className="py-1.5 px-3 border-r border-neutral-800 text-right font-semibold bg-[#ef4444]/90 text-white">
+                                                                    {formatRupiah(sim.s60)}
+                                                                </td>
+                                                                <td className="py-1.5 px-2 border-r border-neutral-800 text-right">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="any"
+                                                                        value={row.belanja === 0 ? '' : row.belanja}
+                                                                        placeholder="0"
+                                                                        onChange={(e) => handleInlineUpdate(row.id, 'belanja', e.target.value)}
+                                                                        aria-label={`Belanja baris ${row.no}`}
+                                                                        className="w-full text-right bg-transparent text-slate-200 tabular-nums focus:outline-none focus:bg-neutral-900 rounded px-1.5 py-0.5"
+                                                                    />
+                                                                </td>
+                                                                <td className="py-1.5 px-2 border-r border-neutral-800 text-center font-semibold text-slate-300">
+                                                                    {pct}%
+                                                                </td>
+                                                                <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleClearRow(row.id)}
+                                                                        title="Kosongkan baris"
+                                                                        className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-slate-200 text-[11px] font-semibold mr-1 cursor-pointer"
+                                                                    >
+                                                                        0
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteRow(row.id)}
+                                                                        title="Hapus baris"
+                                                                        className="px-2 py-0.5 rounded bg-red-950 hover:bg-red-900 text-red-300 border border-red-800/60 text-[11px] font-semibold cursor-pointer"
+                                                                    >
+                                                                        Hapus
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
+
+                                                {/* Baris Total Rekap Simpasan */}
+                                                <tr className="bg-purple-950/90 text-white font-bold border-t-2 border-purple-700">
+                                                    <td colSpan="4" className="py-2.5 px-3 border-r border-purple-800 text-right uppercase tracking-wide text-xs text-purple-200">
+                                                        Total Simpasan Per Skema
+                                                    </td>
+                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">
+                                                        {formatRupiah(summary.totalS75)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">
+                                                        {formatRupiah(summary.totalS70)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">
+                                                        {formatRupiah(summary.totalS65)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right">
+                                                        {formatRupiah(summary.totalS60)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 border-r border-purple-800 text-right text-purple-200">
+                                                        {formatRupiah(summary.totalBelanja)}
+                                                    </td>
+                                                    <td className="py-2.5 px-2.5 border-r border-purple-800 text-center text-purple-200">
+                                                        {summary.avgPercent}%
+                                                    </td>
+                                                    <td className="py-2.5 px-2 text-center text-xs text-purple-300">
+                                                        {summary.activeDaysCount} hr
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                {/* Bottom Detailed Summary Tables */}
+                                <section className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                                    <div className="xl:col-span-7 bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-xl overflow-x-auto">
+                                        <h3 className="text-sm font-bold text-white mb-3">
+                                            Rekap Rata-Rata, Jumlah Hari & Hasil Simpasan
+                                        </h3>
+                                        <table className="w-full border-collapse text-xs sm:text-sm tabular-nums">
+                                            <thead>
+                                                <tr className="bg-neutral-900 text-slate-200 font-bold">
+                                                    <th className="py-2 px-3 border border-neutral-800 text-left">Keterangan</th>
+                                                    <th className="py-2 px-3 border border-neutral-800 text-right bg-[#84cc16] text-black">7.5%</th>
+                                                    <th className="py-2 px-3 border border-neutral-800 text-right bg-[#facc15] text-black">7%</th>
+                                                    <th className="py-2 px-3 border border-neutral-800 text-right bg-[#f59e0b] text-black">6.5%</th>
+                                                    <th className="py-2 px-3 border border-neutral-800 text-right bg-[#ef4444] text-white">6%</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr className="bg-yellow-400 text-black font-bold">
+                                                    <td className="py-2 px-3 border border-yellow-600">hasil rata rata</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatAvgRupiah(summary.avgS75)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatAvgRupiah(summary.avgS70)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatAvgRupiah(summary.avgS65)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatAvgRupiah(summary.avgS60)}</td>
+                                                </tr>
+                                                <tr className="bg-yellow-300 text-black font-extrabold">
+                                                    <td className="py-2 px-3 border border-yellow-500">jumlah hari aktif</td>
+                                                    <td className="py-2 px-3 border border-yellow-500 text-right">{summary.activeDaysCount}</td>
+                                                    <td className="py-2 px-3 border border-yellow-500 text-right">{summary.activeDaysCount}</td>
+                                                    <td className="py-2 px-3 border border-yellow-500 text-right">{summary.activeDaysCount}</td>
+                                                    <td className="py-2 px-3 border border-yellow-500 text-right">{summary.activeDaysCount}</td>
+                                                </tr>
+                                                <tr className="bg-yellow-400 text-black font-bold">
+                                                    <td className="py-2 px-3 border border-yellow-600">hasil simpasan</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatRupiah(summary.totalS75)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatRupiah(summary.totalS70)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatRupiah(summary.totalS65)}</td>
+                                                    <td className="py-2 px-3 border border-yellow-600 text-right">{formatRupiah(summary.totalS60)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="xl:col-span-5 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                        <h3 className="text-sm font-bold text-white">
+                                            Ringkasan Omset, Belanja & Selisih ({activeStore.code})
+                                        </h3>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 tabular-nums">
+                                            <div className="rounded-xl bg-emerald-500 text-black p-3.5 shadow">
+                                                <div className="text-[11px] font-bold uppercase opacity-80">Total Omset</div>
+                                                <div className="text-lg font-extrabold mt-0.5">{formatRupiah(summary.totalOmzet)}</div>
+                                            </div>
+
+                                            <div className="rounded-xl bg-sky-500 text-black p-3.5 shadow">
+                                                <div className="text-[11px] font-bold uppercase opacity-80">omset rata rata</div>
+                                                <div className="text-lg font-extrabold mt-0.5">{formatAvgRupiah(summary.avgOmzet)}</div>
+                                            </div>
+
+                                            <div className="rounded-xl bg-purple-600 text-white p-3.5 shadow">
+                                                <div className="text-[11px] font-bold uppercase opacity-90">Total Belanja</div>
+                                                <div className="text-lg font-extrabold mt-0.5">{formatRupiah(summary.totalBelanja)}</div>
+                                            </div>
+
+                                            <div className="rounded-xl bg-orange-500 text-black p-3.5 shadow">
+                                                <div className="text-[11px] font-bold uppercase opacity-80">Omset Bersih (Setelah 7.5%)</div>
+                                                <div className="text-lg font-extrabold mt-0.5">
+                                                    {formatRupiah(summary.totalOmzet - summary.totalS75)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl bg-fuchsia-600 text-white p-3.5 flex items-center justify-between tabular-nums shadow">
+                                            <div>
+                                                <div className="text-xs font-bold uppercase tracking-wide">
+                                                    Selisih (Omset - Belanja - Simpasan 7.5%)
+                                                </div>
+                                                <div className="text-[11px] opacity-90">
+                                                    Rata-rata persen baris: {summary.avgPercent}%
+                                                </div>
+                                            </div>
+                                            <div className="text-xl font-extrabold">
+                                                {formatRupiah(summary.netDiff)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {!isBranchView && activeTab === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-lg">
+                                        <div className="text-xs font-semibold text-slate-400 uppercase">Total Omset Semua Toko</div>
+                                        <div className="text-2xl font-extrabold text-sky-400 mt-1">{formatRupiah(grandTotals.omzet)}</div>
+                                        <div className="text-xs text-slate-400 mt-1">Dari {stores.length} cabang toko aktif</div>
+                                    </div>
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-lg">
+                                        <div className="text-xs font-semibold text-slate-400 uppercase">Total Simpasan 7.5% Gabungan</div>
+                                        <div className="text-2xl font-extrabold text-lime-400 mt-1">{formatRupiah(grandTotals.s75)}</div>
+                                        <div className="text-xs text-slate-400 mt-1">Skema 7%: {formatRupiah(grandTotals.s70)}</div>
+                                    </div>
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-lg">
+                                        <div className="text-xs font-semibold text-slate-400 uppercase">Total Belanja Gabungan</div>
+                                        <div className="text-2xl font-extrabold text-purple-300 mt-1">{formatRupiah(grandTotals.belanja)}</div>
+                                        <div className="text-xs text-slate-400 mt-1">Total hari aktif: {grandTotals.days} hari</div>
+                                    </div>
+                                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-lg">
+                                        <div className="text-xs font-semibold text-slate-400 uppercase">Selisih Bersih Server</div>
+                                        <div className={`text-2xl font-extrabold mt-1 ${grandTotals.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {formatRupiah(grandTotals.net)}
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">Omset - Belanja - Simpasan 7.5%</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-xl">
+                                    <h3 className="text-base font-bold text-white mb-1">
+                                        Grafik Perbandingan Omset, Simpasan 7.5% & Belanja Antar Toko
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mb-4">
+                                        Visualisasi kinerja real-time seluruh cabang toko dalam pemantauan pusat.
+                                    </p>
+                                    <div className="h-72 sm:h-80 w-full">
+                                        <canvas ref={chartCanvasRef}></canvas>
+                                    </div>
+                                </div>
+
+                                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
+                                    <div className="p-4 sm:p-5 border-b border-neutral-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-base font-bold text-white">Tabel Pemantauan Semua Toko</h3>
+                                            <p className="text-xs text-slate-400">
+                                                Klik "Pantau Buku Toko" untuk melihat rincian harian cabang, atau "Salin Link Cabang" untuk dibagikan ke kasir/PIC toko.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveTab('stores')}
+                                            className="px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition cursor-pointer self-start sm:self-auto"
+                                        >
+                                            + Kelola Toko & Link
+                                        </button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-xs sm:text-sm tabular-nums">
+                                            <thead>
+                                                <tr className="bg-neutral-900 text-slate-200 font-bold border-b border-neutral-800">
+                                                    <th className="py-3 px-4 text-left">Kode & Nama Toko</th>
+                                                    <th className="py-3 px-3 text-center">Hari Aktif</th>
+                                                    <th className="py-3 px-3 text-right">Omset Rata-Rata</th>
+                                                    <th className="py-3 px-3 text-right">Total Omset</th>
+                                                    <th className="py-3 px-3 text-right text-lime-400">Simpasan 7.5%</th>
+                                                    <th className="py-3 px-3 text-right text-purple-300">Total Belanja</th>
+                                                    <th className="py-3 px-3 text-right">Selisih</th>
+                                                    <th className="py-3 px-4 text-center">Pantau & Link Cabang</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {multiStoreSummary.map(({ store, days, avgOmzet, omzet, s75, belanja, net }) => (
+                                                    <tr key={store.id} className="border-b border-neutral-800/80 hover:bg-neutral-900/60">
+                                                        <td className="py-3 px-4">
+                                                            <div className="font-bold text-white">{store.code} — {store.name}</div>
+                                                            <div className="text-xs text-slate-400">{store.location} • PIC: {store.manager}</div>
+                                                        </td>
+                                                        <td className="py-3 px-3 text-center font-semibold text-slate-300">{days} hr</td>
+                                                        <td className="py-3 px-3 text-right font-semibold text-sky-300">{formatAvgRupiah(avgOmzet)}</td>
+                                                        <td className="py-3 px-3 text-right font-bold text-white">{formatRupiah(omzet)}</td>
+                                                        <td className="py-3 px-3 text-right font-semibold text-lime-400">{formatRupiah(s75)}</td>
+                                                        <td className="py-3 px-3 text-right font-semibold text-purple-300">{formatRupiah(belanja)}</td>
+                                                        <td className={`py-3 px-3 text-right font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {formatRupiah(net)}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center whitespace-nowrap space-x-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setActiveStoreId(store.id);
+                                                                    setActiveTab('ledger');
+                                                                }}
+                                                                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition cursor-pointer"
+                                                            >
+                                                                Pantau Buku Toko
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleCopyStoreLink(store)}
+                                                                className="px-2.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-slate-200 border border-neutral-700 text-xs font-semibold transition cursor-pointer"
+                                                            >
+                                                                Salin Link ({getStoreHash(store.code)})
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {!isBranchView && activeTab === 'stores' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                                <div className="lg:col-span-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-xl">
+                                    <h3 className="text-base font-bold text-white mb-1">
+                                        {editingStoreId ? 'Edit Data Toko' : 'Tambah Toko Cabang Baru'}
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mb-4">
+                                        Setiap toko otomatis memiliki link cabang sendiri (#tk-04, dst) yang hanya menampilkan Buku Toko cabang tersebut.
+                                    </p>
+                                    <form onSubmit={handleSaveStoreForm} className="space-y-3.5">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Kode Toko *</label>
+                                            <input
+                                                type="text"
+                                                placeholder={`Contoh: TK-0${stores.length + 1}`}
+                                                value={newStoreCode}
+                                                onChange={(e) => setNewStoreCode(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Nama Toko *</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Contoh: Toko Cabang Selatan"
+                                                value={newStoreName}
+                                                onChange={(e) => setNewStoreName(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Lokasi / Alamat</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Contoh: Jl. Gatot Subroto No. 10"
+                                                value={newStoreLocation}
+                                                onChange={(e) => setNewStoreLocation(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Penanggung Jawab / PIC</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Nama Kepala Toko"
+                                                value={newStoreManager}
+                                                onChange={(e) => setNewStoreManager(e.target.value)}
+                                                className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                                type="submit"
+                                                className="flex-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold py-2.5 px-4 text-sm shadow-md transition cursor-pointer"
+                                            >
+                                                {editingStoreId ? 'Simpan Perubahan' : '+ Tambah Toko'}
+                                            </button>
+                                            {editingStoreId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEditingStoreId(null);
+                                                        setNewStoreCode('');
+                                                        setNewStoreName('');
+                                                        setNewStoreLocation('');
+                                                        setNewStoreManager('');
+                                                    }}
+                                                    className="rounded-xl bg-neutral-900 hover:bg-neutral-800 text-slate-300 border border-neutral-700 font-semibold py-2.5 px-3 text-sm transition cursor-pointer"
+                                                >
+                                                    Batal
+                                                </button>
+                                            )}
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <div className="lg:col-span-8 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div>
+                                        <h3 className="text-base font-bold text-white">Daftar Toko Cabang & Link Masing-Masing ({stores.length})</h3>
+                                        <p className="text-xs text-slate-400">
+                                            Bagikan link khusus di bawah ini kepada masing-masing toko. Jika toko membuka linknya, hanya Buku Toko cabang tersebut yang muncul.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {stores.map((st) => {
+                                            const isSelected = st.id === activeStore.id;
+                                            const storeHash = getStoreHash(st.code);
+                                            return (
+                                                <div
+                                                    key={st.id}
+                                                    className={`rounded-2xl border p-4 transition ${
+                                                        isSelected
+                                                            ? 'border-sky-500 bg-sky-950/20'
+                                                            : 'border-neutral-800 bg-black'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-700 text-sky-300 text-xs font-bold">
+                                                                    {st.code}
+                                                                </span>
+                                                                {isSelected && (
+                                                                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold">
+                                                                        Dipilih
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-white mt-1.5">{st.name}</h4>
+                                                            <p className="text-xs text-slate-400 mt-0.5">{st.location}</p>
+                                                            <p className="text-xs text-slate-400">PIC: {st.manager}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-3 p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono text-sky-300 flex items-center justify-between gap-2">
+                                                        <span className="truncate">{storeHash}</span>
+                                                        <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap">
+                                                            Buku Toko Saja
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="mt-3.5 pt-3 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setActiveStoreId(st.id);
+                                                                    setActiveTab('ledger');
+                                                                }}
+                                                                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold transition cursor-pointer"
+                                                            >
+                                                                Pantau Buku
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleCopyStoreLink(st)}
+                                                                className="px-2.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-slate-200 border border-neutral-700 text-xs font-semibold transition cursor-pointer"
+                                                            >
+                                                                Salin Link
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleStartEditStore(st)}
+                                                                className="px-2.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-slate-200 border border-neutral-700 text-xs font-semibold transition cursor-pointer"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteStore(st.id)}
+                                                            className="px-2.5 py-1.5 rounded-lg bg-red-950 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs font-semibold transition cursor-pointer"
+                                                        >
+                                                            Hapus
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    <footer className="border-t border-neutral-800 bg-black py-4 px-4 sm:px-6 text-xs text-slate-400">
+                        <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+                            <span>
+                                {isBranchView
+                                    ? `Buku Toko ${activeStore.code} — ${activeStore.name}`
+                                    : `Server Pusat Multi-Toko (${stores.length} Cabang Aktif)`}
+                            </span>
+                            <span>
+                                Skema Simpasan: 7.5% • 7% • 6.5% • 6% dari Omset/Hari
+                            </span>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+```
