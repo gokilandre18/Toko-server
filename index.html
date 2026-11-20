@@ -4,1337 +4,1506 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Multi-Toko — System Real-Time</title>
-    <!-- Tailwind CSS CDN for utility classes -->
+    <title>Buku Toko Online - Multi-Toko & Server Sync</title>
+
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for Server Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        :root {
-            --bg-main: #000000;
-            --bg-card: #0d0d10;
-            --bg-card-hover: #141419;
-            --border-color: #222228;
-            --accent-green: #10b981;
-            --accent-blue: #3b82f6;
-            --accent-amber: #f59e0b;
-            --accent-purple: #a855f7;
-            --accent-rose: #f43f5e;
-        }
-
         body {
-            background-color: var(--bg-main);
-            color: #f3f4f6;
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
         }
-
-        .tabular-nums {
-            font-variant-numeric: tabular-nums;
+        .table-scrollbar::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
         }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        .table-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
         }
-        ::-webkit-scrollbar-track {
-            background: #000000;
+        .table-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #222228;
-            border-radius: 9999px;
+        .table-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3b82f6;
-        }
-
-        /* Table Inputs */
-        input.table-input {
-            background: transparent;
-            border: 1px solid transparent;
-            color: inherit;
-            padding: 4px 6px;
-            border-radius: 6px;
-            width: 100%;
-            transition: all 0.15s ease;
-        }
-        input.table-input:hover {
-            border-color: #33333d;
-            background: rgba(255, 255, 255, 0.03);
-        }
-        input.table-input:focus {
-            outline: none;
-            border-color: #10b981;
-            background: rgba(16, 185, 129, 0.1);
-        }
-
-        .pulse-anim {
-            animation: pulse-ring 1s cubic-bezier(0.24, 0, 0.38, 1) infinite;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.95); opacity: 0.8; }
-            50% { transform: scale(1.05); opacity: 1; }
-            100% { transform: scale(0.95); opacity: 0.8; }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-full {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+            }
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col antialiased">
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- Global Error Fallback Banner -->
-    <div id="error-banner" class="hidden bg-rose-950/90 text-rose-200 border-b border-rose-800 p-3 text-xs text-center font-bold sticky top-0 z-50">
-        <span id="error-msg">Terjadi gangguan tampilan.</span>
-        <button onclick="window.location.reload()" class="ml-3 underline cursor-pointer">Muat Ulang Halaman</button>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-emerald-500 text-black font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300">
-        Message
-    </div>
-
-    <!-- Modal Firebase & Backup Config -->
-    <div id="modal-firebase" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4">
-            <div class="flex items-center justify-between border-b border-[#222228] pb-3">
-                <h3 class="text-base font-bold text-white flex items-center gap-2">
-                    <span>⚡</span> Hubungkan Firebase Cloud Realtime
-                </h3>
-                <button onclick="closeFirebaseModal()" class="text-gray-400 hover:text-white font-bold cursor-pointer text-sm">✕</button>
-            </div>
-            
-            <p class="text-xs text-gray-400 leading-relaxed">
-                Tempelkan <b>Database URL</b> Firebase Anda agar input dari cabang di HP/Laptop mana pun <span className="text-emerald-400 font-semibold">langsung tersinkron ke Server Pusat secara real-time (&lt; 1 detik)</span>.
-            </p>
-
-            <div class="space-y-3">
-                <div>
-                    <label class="block text-xs font-semibold text-gray-300 mb-1">Firebase Database URL</label>
-                    <input type="url" id="fb-url-input" placeholder="https://proyek-anda-default-rtdb.firebaseio.com" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-                    <p class="text-[11px] text-gray-500 mt-1">
-                        Aturan RTDB di Firebase: <code>".read": true, ".write": true</code>
-                    </p>
-                </div>
-
-                <div class="pt-2 border-t border-[#222228] flex items-center justify-between">
-                    <button onclick="exportDataJSON()" class="px-3 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer">
-                        📥 Download Backup JSON
-                    </button>
-                    <label class="px-3 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
-                        📤 Restore Backup JSON
-                        <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="importDataJSON(event)" />
-                    </label>
-                </div>
-
-                <div class="pt-2 flex items-center justify-end gap-2 border-t border-[#222228]">
-                    <button onclick="closeFirebaseModal()" class="px-4 py-2 rounded-xl bg-[#141419] border border-[#222228] text-xs text-gray-300 cursor-pointer">Batal</button>
-                    <button onclick="saveFirebaseConfig()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-md cursor-pointer">Simpan & Hubungkan</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- HEADER SYSTEM -->
-    <header className="sticky top-0 z-30 bg-black/95 border-b border-[#222228] backdrop-blur-md">
-        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-3">
-                <div id="header-badge" class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg">
-                    SRV
-                </div>
-                <div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <h1 id="header-title" class="text-base sm:text-lg font-bold text-white tracking-tight">
-                            Server Pusat Multi-Toko
-                        </h1>
-                        <span id="sync-status-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-blue-500/10 text-blue-300 border-blue-500/30 flex items-center gap-1.5">
-                            <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                            <span id="sync-text">Lokal (Tab Ini)</span> • <span id="sync-time">11:11:00</span>
-                        </span>
+    <!-- TOP BAR / HEADER -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 gap-2">
+                
+                <!-- App Logo & Active Access Tag -->
+                <div class="flex items-center gap-3">
+                    <div class="bg-gradient-to-tr from-sky-500 to-indigo-600 p-2.5 rounded-xl shadow-md flex items-center justify-center text-white">
+                        <i class="fa-solid fa-cash-register text-xl"></i>
                     </div>
-                    <p id="header-sub" class="text-xs text-gray-400">
-                        Memuat data toko...
-                    </p>
+                    <div>
+                        <h1 class="text-base sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                            Buku Toko Online
+                            <span class="text-[10px] sm:text-xs bg-sky-500/20 text-sky-300 font-semibold px-2 py-0.5 rounded-full border border-sky-500/30">Realtime</span>
+                        </h1>
+                        <p id="headerSubtext" class="text-xs text-slate-400 hidden sm:block">Akses Langsung via Link / Hash URL</p>
+                    </div>
                 </div>
 
-                <!-- Central Selector Dropdown (Hidden in Branch Mode) -->
-                <div id="store-selector-wrapper" class="hidden items-center gap-2 bg-[#0d0d10] border border-[#222228] rounded-xl px-3 py-1.5">
-                    <label class="text-xs font-medium text-gray-400">Inspeksi Buku:</label>
-                    <select id="store-selector" onchange="handleSelectStore(this.value)" class="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer">
-                        <!-- Options generated dynamically -->
-                    </select>
-                </div>
-            </div>
+                <!-- Right Header Actions -->
+                <div class="flex items-center gap-2">
+                    <!-- Firebase Sync Status Badge -->
+                    <div id="syncBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Status Koneksi Database">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="syncDot"></span>
+                        <span id="syncText" class="hidden md:inline">Menghubungkan...</span>
+                    </div>
 
-            <!-- Server Navigation Tabs (Hidden in Branch Mode) -->
-            <div id="server-nav-tabs" class="flex items-center gap-2 overflow-x-auto">
-                <button onclick="openFirebaseModal()" class="px-3 py-1.5 rounded-xl bg-[#0d0d10] hover:bg-[#141419] text-gray-300 border border-[#222228] text-xs font-semibold flex items-center gap-1 cursor-pointer">
-                    <span>⚡</span> Cloud Sync
-                </button>
-                <nav class="flex items-center gap-1 bg-[#0d0d10] border border-[#222228] p-1 rounded-xl">
-                    <button id="tab-btn-dashboard" onclick="switchServerTab('dashboard')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white cursor-pointer">
-                        Pantau Semua Toko
+                    <!-- Share / Copy Direct Link Button -->
+                    <button onclick="openShareModal()" class="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-3 py-1.5 rounded-xl shadow transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-share-nodes"></i>
+                        <span class="hidden sm:inline">Bagikan Link Akses</span>
                     </button>
-                    <button id="tab-btn-ledger" onclick="switchServerTab('ledger')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer">
-                        Buku Toko
-                    </button>
-                    <button id="tab-btn-manage" onclick="switchServerTab('manage')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer">
-                        Kelola Toko & Link
-                    </button>
-                </nav>
+
+                    <!-- Quick Navigation Dropdown -->
+                    <div class="relative inline-block text-left">
+                        <button onclick="toggleNavMenu()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 sm:px-3 sm:py-1.5 rounded-xl border border-slate-700 text-xs font-semibold flex items-center gap-1.5">
+                            <i class="fa-solid fa-bars text-sm"></i>
+                            <span class="hidden sm:inline">Ganti Akses</span>
+                        </button>
+                        <div id="navDropdown" class="hidden absolute right-0 mt-2 w-48 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 py-2 z-50">
+                            <a href="#toko1" onclick="closeNavMenu()" class="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold hover:bg-sky-50 text-slate-700 hover:text-sky-600">
+                                <i class="fa-solid fa-store text-sky-500"></i> Akses Toko 1
+                            </a>
+                            <a href="#toko2" onclick="closeNavMenu()" class="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold hover:bg-emerald-50 text-slate-700 hover:text-emerald-600">
+                                <i class="fa-solid fa-shop text-emerald-500"></i> Akses Toko 2
+                            </a>
+                            <a href="#server" onclick="closeNavMenu()" class="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold hover:bg-purple-50 text-slate-700 hover:text-purple-600 border-t border-slate-100 mt-1 pt-2">
+                                <i class="fa-solid fa-server text-purple-500"></i> Dashboard Server
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </header>
 
-    <!-- MAIN CONTENT CONTAINER -->
-    <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
 
-        <!-- SECTION A: BRANCH OR LEDGER VIEW (Tampil saat Mode Cabang ATAU Tab Buku Toko) -->
-        <div id="view-ledger" class="space-y-6">
-            
-            <!-- Store Banner -->
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl">
+        <!-- ACTIVE VIEW BANNER -->
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+            <div class="flex items-center gap-3">
+                <div id="activeRoleAvatar" class="w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center text-xl font-extrabold shadow-sm">
+                    <i id="activeRoleIcon" class="fa-solid fa-store"></i>
+                </div>
                 <div>
                     <div class="flex items-center gap-2">
-                        <span id="branch-badge-code" class="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
-                            TK-01
-                        </span>
-                        <h2 id="branch-store-name" class="text-lg sm:text-xl font-bold text-white">
-                            Toko Utama
-                        </h2>
+                        <h2 id="activeRoleTitle" class="text-xl font-bold text-slate-800">Toko 1</h2>
+                        <span id="activeRoleBadge" class="bg-sky-100 text-sky-700 text-xs px-2.5 py-0.5 rounded-full font-semibold">Akses Terpisah</span>
                     </div>
-                    <p id="branch-store-meta" class="text-xs text-gray-400 mt-1">
-                        Lokasi: - • PIC: -
-                    </p>
+                    <p id="activeRoleSub" class="text-xs text-slate-500 mt-0.5">Kelola data pencatatan harian omset dan belanja.</p>
+                </div>
+            </div>
+
+            <!-- Toolbar Controls -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Filter Month -->
+                <div class="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-600 border border-slate-200">
+                    <i class="fa-regular fa-calendar text-slate-400 mr-2"></i>
+                    <input type="month" id="filterMonth" onchange="renderData()" class="bg-transparent border-none focus:outline-none text-slate-700 font-semibold cursor-pointer">
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <button onclick="handleAddNewDateRow()" class="px-3.5 py-2 rounded-xl bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-semibold cursor-pointer">
-                        + Tambah Tanggal
+                <!-- Add Row Button -->
+                <button id="btnAddEntry" onclick="openEntryModal()" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl shadow-md transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus text-sm"></i>
+                    <span>+ Tambah Hari</span>
+                </button>
+
+                <!-- Copy Current Store Direct Link Button -->
+                <button id="btnCopyCurrentLink" onclick="copyCurrentRoleLink()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs px-3 py-2.5 rounded-xl transition flex items-center gap-1.5 border border-slate-200" title="Salin link halaman ini">
+                    <i class="fa-solid fa-link text-slate-500"></i>
+                    <span class="hidden sm:inline">Salin Link Toko</span>
+                </button>
+
+                <!-- Settings -->
+                <button onclick="openSettingsModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs px-3 py-2.5 rounded-xl transition flex items-center gap-1.5 border border-slate-200" title="Atur Nama Toko & Persentase">
+                    <i class="fa-solid fa-gear text-slate-500"></i>
+                    <span class="hidden sm:inline">Pengaturan</span>
+                </button>
+
+                <!-- Print -->
+                <button onclick="window.print()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs px-3 py-2.5 rounded-xl transition flex items-center gap-1.5 border border-slate-200" title="Cetak Rekap">
+                    <i class="fa-solid fa-print text-slate-500"></i>
+                    <span class="hidden sm:inline">Cetak</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- SERVER DASHBOARD VIEW (Visible when hash is #server) -->
+        <div id="serverDashboardView" class="hidden space-y-6">
+            
+            <!-- Quick Link Sharing Cards for Server Administrator -->
+            <div class="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-4 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h3 class="font-bold text-sm sm:text-base flex items-center gap-2 text-purple-200">
+                        <i class="fa-solid fa-paper-plane text-amber-400"></i> Link Akses Khusus Masing-Masing Toko
+                    </h3>
+                    <p class="text-xs text-purple-200/80 mt-0.5">Kirimkan link khusus ini kepada pengelola Toko 1 & Toko 2 agar mereka langsung menginput data tanpa perlu login atau berpindah toko.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="copyRoleLink('toko1')" class="bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-copy"></i> Salin Link <span id="serverLabelToko1">Toko 1</span>
+                    </button>
+                    <button onclick="copyRoleLink('toko2')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-copy"></i> Salin Link <span id="serverLabelToko2">Toko 2</span>
                     </button>
                 </div>
             </div>
 
-            <!-- KPI Cards Summary -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
-                <div class="bg-blue-600 text-white rounded-2xl p-4 sm:p-5 shadow-lg">
-                    <div class="text-xs font-bold uppercase opacity-80">Omset Rata-Rata</div>
-                    <div id="kpi-avg-omzet" class="text-2xl sm:text-3xl font-extrabold mt-1">Rp0</div>
-                    <div id="kpi-active-days" class="text-xs font-medium mt-1 opacity-80">Hari aktif: 0 / 22 hari</div>
+            <!-- Server Executive Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-5 shadow-lg border border-slate-700 relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl"><i class="fa-solid fa-chart-line"></i></div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Omset Gabungan</p>
+                    <h3 id="serverTotalOmset" class="text-2xl font-extrabold text-sky-400 mt-2">Rp 0</h3>
+                    <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                        <span id="serverTotalHari" class="text-slate-200 font-semibold">0 Hari</span> tercatat
+                    </p>
                 </div>
 
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
-                    <div class="text-xs font-semibold uppercase text-gray-400">Total Omset Toko</div>
-                    <div id="kpi-total-omzet" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
-                    <div class="text-xs text-gray-500 mt-1">Akumulasi input harian</div>
+                <div class="bg-gradient-to-br from-emerald-950 to-emerald-900 text-white rounded-2xl p-5 shadow-lg border border-emerald-800 relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl"><i class="fa-solid fa-vault"></i></div>
+                    <p class="text-xs font-medium text-emerald-300 uppercase tracking-wider">Total Simpanan Gabungan</p>
+                    <h3 id="serverTotalSimpanan" class="text-2xl font-extrabold text-emerald-400 mt-2">Rp 0</h3>
+                    <p class="text-xs text-emerald-300/80 mt-2">Akumulasi 4 Alokasi Simpanan</p>
                 </div>
 
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
-                    <div class="text-xs font-semibold uppercase text-gray-400">Total Simpasan (7.5%)</div>
-                    <div id="kpi-total-s75" class="text-2xl font-extrabold text-amber-300 mt-1">Rp0</div>
-                    <div id="kpi-avg-s75" class="text-xs text-gray-500 mt-1">Rata-rata: Rp0</div>
+                <div class="bg-gradient-to-br from-purple-950 to-purple-900 text-white rounded-2xl p-5 shadow-lg border border-purple-800 relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl"><i class="fa-solid fa-shopping-cart"></i></div>
+                    <p class="text-xs font-medium text-purple-300 uppercase tracking-wider">Total Pengeluaran / Belanja</p>
+                    <h3 id="serverTotalBelanja" class="text-2xl font-extrabold text-purple-300 mt-2">Rp 0</h3>
+                    <p class="text-xs text-purple-300/80 mt-2">Gabungan Toko 1 & Toko 2</p>
                 </div>
 
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-lg">
-                    <div class="text-xs font-semibold uppercase text-gray-400">Total Belanja & Selisih</div>
-                    <div id="kpi-total-belanja" class="text-xl font-extrabold text-purple-300 mt-1">Rp0</div>
-                    <div id="kpi-net-diff" class="text-xs font-bold mt-1 text-emerald-400">Selisih Bersih: Rp0</div>
+                <div class="bg-gradient-to-br from-indigo-950 to-indigo-900 text-white rounded-2xl p-5 shadow-lg border border-indigo-800 relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl"><i class="fa-solid fa-wallet"></i></div>
+                    <p class="text-xs font-medium text-indigo-300 uppercase tracking-wider">Estimasi Saldo Bersih</p>
+                    <h3 id="serverSaldoBersih" class="text-2xl font-extrabold text-indigo-300 mt-2">Rp 0</h3>
+                    <p class="text-xs text-indigo-300/80 mt-2">Omset - (Simpanan + Belanja)</p>
                 </div>
             </div>
 
-            <!-- Form Quick Input -->
-            <section class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                    <div>
-                        <h3 class="text-sm font-bold text-white">Form Input Transaksi Harian</h3>
-                        <p class="text-xs text-gray-400">Ketik omzet atau belanja di sini atau edit langsung di tabel di bawah.</p>
+            <!-- Stores Breakdown Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Toko 1 Summary Box -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-sky-500"></span>
+                            <h3 id="serverToko1Name" class="font-bold text-slate-800 text-base">Toko 1</h3>
+                        </div>
+                        <a href="#toko1" class="text-xs text-sky-600 hover:text-sky-700 font-semibold flex items-center gap-1">
+                            Lihat Detail Toko 1 <i class="fa-solid fa-arrow-right"></i>
+                        </a>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <input type="text" id="search-ledger" oninput="renderLedgerTable()" placeholder="Cari tanggal/hari..." class="bg-black border border-[#222228] rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500" />
+
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-xs text-slate-500">Total Omset</p>
+                            <p id="t1SumOmset" class="font-bold text-slate-800 mt-0.5 text-base">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-xs text-slate-500">Rata-rata / Hari</p>
+                            <p id="t1SumAvg" class="font-bold text-sky-600 mt-0.5">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                            <p class="text-xs text-emerald-700">Total Simpanan</p>
+                            <p id="t1SumSimpanan" class="font-bold text-emerald-700 mt-0.5">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
+                            <p class="text-xs text-purple-700">Total Belanja</p>
+                            <p id="t1SumBelanja" class="font-bold text-purple-700 mt-0.5">Rp 0</p>
+                        </div>
                     </div>
                 </div>
 
-                <form onsubmit="handleFormInputSubmit(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Tanggal</label>
-                        <input type="date" id="input-form-date" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+                <!-- Toko 2 Summary Box -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                            <h3 id="serverToko2Name" class="font-bold text-slate-800 text-base">Toko 2</h3>
+                        </div>
+                        <a href="#toko2" class="text-xs text-sky-600 hover:text-sky-700 font-semibold flex items-center gap-1">
+                            Lihat Detail Toko 2 <i class="fa-solid fa-arrow-right"></i>
+                        </a>
                     </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Omset / Hari (Rp)</label>
-                        <input type="number" min="0" step="any" id="input-form-omzet" placeholder="0" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Total Belanja (Rp)</label>
-                        <input type="number" min="0" step="any" id="input-form-belanja" placeholder="0" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Persen (%) Opsional</label>
-                        <input type="number" min="0" max="100" id="input-form-percent" placeholder="Otomatis" class="w-full bg-black border border-[#222228] rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-emerald-500" />
-                    </div>
-                    <div>
-                        <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 px-4 rounded-xl text-xs shadow transition cursor-pointer">
-                            Simpan Data
-                        </button>
-                    </div>
-                </form>
-            </section>
 
-            <!-- Tabel Pembukuan Harian -->
-            <section class="bg-[#0d0d10] border border-[#222228] rounded-2xl overflow-hidden shadow-2xl">
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse text-xs tabular-nums">
-                        <thead>
-                            <tr class="bg-[#141419] text-gray-200 font-bold border-b border-[#222228]">
-                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-center w-12">NO.</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-left min-w-[125px]">tanggal</th>
-                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-left w-20">hari</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[140px]">omset/hari</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-emerald-500 text-black">Simpasan 7.5%</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-amber-400 text-black">Simpasan 7%</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-amber-500 text-black">Simpasan 6.5%</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[125px] bg-rose-500 text-white">simpasan 6%</th>
-                                <th class="py-2.5 px-3 border-r border-[#222228] text-right min-w-[130px]">total belanja</th>
-                                <th class="py-2.5 px-2.5 border-r border-[#222228] text-center w-20">persen</th>
-                                <th class="py-2.5 px-2 text-center w-20">aksi</th>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-xs text-slate-500">Total Omset</p>
+                            <p id="t2SumOmset" class="font-bold text-slate-800 mt-0.5 text-base">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-xs text-slate-500">Rata-rata / Hari</p>
+                            <p id="t2SumAvg" class="font-bold text-emerald-600 mt-0.5">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                            <p class="text-xs text-emerald-700">Total Simpanan</p>
+                            <p id="t2SumSimpanan" class="font-bold text-emerald-700 mt-0.5">Rp 0</p>
+                        </div>
+                        <div class="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
+                            <p class="text-xs text-purple-700">Total Belanja</p>
+                            <p id="t2SumBelanja" class="font-bold text-purple-700 mt-0.5">Rp 0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Chart -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <h3 class="font-bold text-slate-800 text-base mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-column text-sky-500"></i> Grafik Perbandingan Omset Harian Toko 1 vs Toko 2
+                </h3>
+                <div class="w-full h-72">
+                    <canvas id="serverChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- SPREADSHEET FINANCIAL CARDS & STORE TABLE VIEW -->
+        <div id="storeView" class="space-y-6">
+
+            <!-- STATS CARDS HIGHLIGHT -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+                <!-- Omset Card (Cyan) -->
+                <div class="col-span-2 sm:col-span-3 lg:col-span-2 bg-sky-500 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-sky-100 uppercase tracking-wider">Total Omset</span>
+                        <i class="fa-solid fa-vault opacity-70"></i>
+                    </div>
+                    <div class="mt-2">
+                        <h3 id="cardTotalOmset" class="text-2xl font-extrabold text-white">Rp 0</h3>
+                        <p class="text-xs text-sky-100 mt-1 flex items-center justify-between">
+                            <span>Omset Rata-rata:</span>
+                            <span id="cardAvgOmset" class="font-bold">Rp 0</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Green Simpanan Card -->
+                <div class="bg-emerald-500 text-white rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+                    <span id="labelSimpanan1" class="text-[11px] font-semibold text-emerald-100">Simpanan 7.5%</span>
+                    <h4 id="cardSimpanan1" class="text-base font-bold text-white mt-2">Rp 0</h4>
+                </div>
+
+                <!-- Yellow Simpanan Card -->
+                <div class="bg-amber-400 text-slate-900 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+                    <span id="labelSimpanan2" class="text-[11px] font-semibold text-amber-900">Simpanan 7.0%</span>
+                    <h4 id="cardSimpanan2" class="text-base font-bold text-slate-900 mt-2">Rp 0</h4>
+                </div>
+
+                <!-- Orange Simpanan Card -->
+                <div class="bg-orange-500 text-white rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+                    <span id="labelSimpanan3" class="text-[11px] font-semibold text-orange-100">Simpanan 6.5%</span>
+                    <h4 id="cardSimpanan3" class="text-base font-bold text-white mt-2">Rp 0</h4>
+                </div>
+
+                <!-- Red Simpanan Card -->
+                <div class="bg-rose-600 text-white rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+                    <span id="labelSimpanan4" class="text-[11px] font-semibold text-rose-100">Simpanan 6.0%</span>
+                    <h4 id="cardSimpanan4" class="text-base font-bold text-white mt-2">Rp 0</h4>
+                </div>
+
+                <!-- Belanja / Expense Card -->
+                <div class="bg-purple-600 text-white rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+                    <span class="text-[11px] font-semibold text-purple-100">Total Belanja</span>
+                    <h4 id="cardTotalBelanja" class="text-base font-bold text-white mt-2">Rp 0</h4>
+                </div>
+            </div>
+
+            <!-- DAILY RECORD TABLE (Spreadsheet Layout) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print-full">
+
+                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between no-print">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-table text-sky-600"></i>
+                        <h3 class="font-bold text-slate-800 text-sm sm:text-base">Catatan Keuangan Harian</h3>
+                    </div>
+                    <span id="recordCountBadge" class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-medium">0 Baris</span>
+                </div>
+
+                <!-- Table Content -->
+                <div class="overflow-x-auto table-scrollbar max-h-[500px]">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-800 text-slate-200 uppercase font-semibold sticky top-0 z-10 text-[11px]">
+                            <tr>
+                                <th class="py-3 px-3 border-b border-slate-700 text-center w-12">NO.</th>
+                                <th class="py-3 px-3 border-b border-slate-700 min-w-[100px]">Tanggal</th>
+                                <th class="py-3 px-3 border-b border-slate-700 min-w-[80px]">Hari</th>
+                                <th class="py-3 px-3 border-b border-slate-700 min-w-[130px] text-right bg-sky-900/60 text-sky-200">Omset (Rp)</th>
+                                <th id="thSim1" class="py-3 px-3 border-b border-slate-700 min-w-[110px] text-right bg-emerald-900/60 text-emerald-200">Simpanan 7.5%</th>
+                                <th id="thSim2" class="py-3 px-3 border-b border-slate-700 min-w-[110px] text-right bg-amber-900/60 text-amber-200">Simpanan 7.0%</th>
+                                <th id="thSim3" class="py-3 px-3 border-b border-slate-700 min-w-[110px] text-right bg-orange-900/60 text-orange-200">Simpanan 6.5%</th>
+                                <th id="thSim4" class="py-3 px-3 border-b border-slate-700 min-w-[110px] text-right bg-rose-900/60 text-rose-200">Simpanan 6.0%</th>
+                                <th class="py-3 px-3 border-b border-slate-700 min-w-[120px] text-right bg-purple-900/60 text-purple-200">Total Belanja</th>
+                                <th class="py-3 px-3 border-b border-slate-700 min-w-[70px] text-center">Persen</th>
+                                <th class="py-3 px-3 border-b border-slate-700 text-center w-20 no-print">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody id="ledger-tbody">
+
+                        <tbody id="tableBody" class="divide-y divide-slate-100 font-medium">
                             <!-- Dynamic Rows -->
                         </tbody>
-                        <tfoot>
-                            <tr class="bg-purple-950/80 text-white font-bold border-t-2 border-purple-700">
-                                <td colSpan="4" class="py-2.5 px-3 border-r border-purple-800 text-right uppercase text-xs text-purple-200">
-                                    Total Simpasan Per Skema
-                                </td>
-                                <td id="foot-s75" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
-                                <td id="foot-s70" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
-                                <td id="foot-s65" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
-                                <td id="foot-s60" class="py-2.5 px-3 border-r border-purple-800 text-right">Rp0</td>
-                                <td id="foot-belanja" class="py-2.5 px-3 border-r border-purple-800 text-right text-purple-200">Rp0</td>
-                                <td id="foot-pct" class="py-2.5 px-2.5 border-r border-purple-800 text-center text-purple-200">0%</td>
-                                <td id="foot-days" class="py-2.5 px-2 text-center text-xs text-purple-300">0 hr</td>
+
+                        <tfoot class="bg-purple-950 text-purple-100 font-bold text-xs sticky bottom-0">
+                            <tr class="border-t-2 border-purple-800">
+                                <td colspan="3" class="py-3 px-3 text-right uppercase tracking-wider text-purple-200">Total Akumulasi:</td>
+                                <td id="footTotalOmset" class="py-3 px-3 text-right text-sky-300 font-extrabold text-sm bg-sky-950/80">Rp 0</td>
+                                <td id="footSim1" class="py-3 px-3 text-right text-emerald-300 font-bold bg-emerald-950/80">Rp 0</td>
+                                <td id="footSim2" class="py-3 px-3 text-right text-amber-300 font-bold bg-amber-950/80">Rp 0</td>
+                                <td id="footSim3" class="py-3 px-3 text-right text-orange-300 font-bold bg-orange-950/80">Rp 0</td>
+                                <td id="footSim4" class="py-3 px-3 text-right text-rose-300 font-bold bg-rose-950/80">Rp 0</td>
+                                <td id="footTotalBelanja" class="py-3 px-3 text-right text-purple-300 font-bold bg-purple-900/80">Rp 0</td>
+                                <td id="footAvgPersen" class="py-3 px-3 text-center text-purple-200">0%</td>
+                                <td class="no-print"></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
-            </section>
 
-            <!-- Bottom Rekapitulasi -->
-            <section class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-                <div class="xl:col-span-7 bg-[#0d0d10] border border-[#222228] rounded-2xl p-4 sm:p-5 shadow-xl overflow-x-auto">
-                    <h3 class="text-sm font-bold text-white mb-3">Rekap Rata-Rata, Jumlah Hari & Hasil Simpasan</h3>
-                    <table class="w-full border-collapse text-xs tabular-nums">
-                        <thead>
-                            <tr class="bg-[#141419] text-gray-200 font-bold">
-                                <th class="py-2 px-3 border border-[#222228] text-left">Keterangan</th>
-                                <th class="py-2 px-3 border border-[#222228] text-right bg-emerald-500 text-black">7.5%</th>
-                                <th class="py-2 px-3 border border-[#222228] text-right bg-amber-400 text-black">7%</th>
-                                <th class="py-2 px-3 border border-[#222228] text-right bg-amber-500 text-black">6.5%</th>
-                                <th class="py-2 px-3 border border-[#222228] text-right bg-rose-500 text-white">6%</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr class="bg-amber-400 text-black font-bold">
-                                <td class="py-2 px-3 border border-amber-600">hasil rata rata</td>
-                                <td id="rekap-avg-s75" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-avg-s70" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-avg-s65" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-avg-s60" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                            </tr>
-                            <tr class="bg-amber-300 text-black font-extrabold">
-                                <td class="py-2 px-3 border border-amber-500">jumlah hari aktif</td>
-                                <td id="rekap-days-1" class="py-2 px-3 border border-amber-500 text-right">0</td>
-                                <td id="rekap-days-2" class="py-2 px-3 border border-amber-500 text-right">0</td>
-                                <td id="rekap-days-3" class="py-2 px-3 border border-amber-500 text-right">0</td>
-                                <td id="rekap-days-4" class="py-2 px-3 border border-amber-500 text-right">0</td>
-                            </tr>
-                            <tr class="bg-amber-400 text-black font-bold">
-                                <td class="py-2 px-3 border border-amber-600">hasil simpasan</td>
-                                <td id="rekap-total-s75" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-total-s70" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-total-s65" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                                <td id="rekap-total-s60" class="py-2 px-3 border border-amber-600 text-right">Rp0</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="emptyState" class="hidden py-12 text-center text-slate-400">
+                    <i class="fa-regular fa-folder-open text-4xl mb-3 text-slate-300"></i>
+                    <p class="text-sm font-medium">Belum ada data pencatatan harian untuk toko ini pada bulan yang dipilih.</p>
+                    <p class="text-xs text-slate-400 mt-1">Klik tombol "+ Tambah Hari" di atas untuk memasukkan data baru.</p>
                 </div>
+            </div>
 
-                <div class="xl:col-span-5 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-4">
-                    <h3 class="text-sm font-bold text-white">Ringkasan Omset, Belanja & Selisih</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 tabular-nums">
-                        <div class="rounded-xl bg-emerald-500 text-black p-3.5 shadow">
-                            <div class="text-[11px] font-bold uppercase opacity-80">Total Omset</div>
-                            <div id="side-total-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
+            <!-- SPREADSHEET RECAP SECTION -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-5 print-full">
+                <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <i class="fa-solid fa-calculator text-amber-500"></i> Rekapitulasi Rata-Rata & Simpanan
+                </h4>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Green Block -->
+                    <div class="rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50/30">
+                        <div class="bg-emerald-500 text-white p-2.5 text-center font-bold text-xs">
+                            <span id="recapTitleSim1">Hasil Rata-rata Simpanan 7.5%</span>
                         </div>
-                        <div class="rounded-xl bg-blue-600 text-white p-3.5 shadow">
-                            <div class="text-[11px] font-bold uppercase opacity-80">omset rata rata</div>
-                            <div id="side-avg-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
-                        </div>
-                        <div class="rounded-xl bg-purple-600 text-white p-3.5 shadow">
-                            <div class="text-[11px] font-bold uppercase opacity-90">Total Belanja</div>
-                            <div id="side-total-belanja" class="text-lg font-extrabold mt-0.5">Rp0</div>
-                        </div>
-                        <div class="rounded-xl bg-amber-500 text-black p-3.5 shadow">
-                            <div class="text-[11px] font-bold uppercase opacity-80">Omset Bersih (Setelah 7.5%)</div>
-                            <div id="side-net-omzet" class="text-lg font-extrabold mt-0.5">Rp0</div>
+                        <div class="p-3 text-center space-y-2">
+                            <div>
+                                <p class="text-[11px] text-slate-500">Rata-rata / Hari</p>
+                                <p id="recapAvgSim1" class="text-base font-extrabold text-emerald-700">Rp 0</p>
+                            </div>
+                            <div class="border-t border-emerald-100 pt-2">
+                                <p class="text-[11px] text-slate-500">Total Terkumpul</p>
+                                <p id="recapTotalSim1" class="text-sm font-bold text-slate-800">Rp 0</p>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
-        </div>
 
-        <!-- SECTION B: SERVER DASHBOARD TAB (Only in Central Mode) -->
-        <div id="view-dashboard" class="hidden space-y-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 tabular-nums">
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
-                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Omset Semua Toko</div>
-                    <div id="srv-grand-omzet" class="text-2xl font-extrabold text-blue-400 mt-1">Rp0</div>
-                    <div id="srv-grand-stores" class="text-xs text-gray-500 mt-1">Dari 0 cabang</div>
+                    <!-- Yellow Block -->
+                    <div class="rounded-xl overflow-hidden border border-amber-200 bg-amber-50/30">
+                        <div class="bg-amber-400 text-slate-900 p-2.5 text-center font-bold text-xs">
+                            <span id="recapTitleSim2">Hasil Rata-rata Simpanan 7.0%</span>
+                        </div>
+                        <div class="p-3 text-center space-y-2">
+                            <div>
+                                <p class="text-[11px] text-slate-500">Rata-rata / Hari</p>
+                                <p id="recapAvgSim2" class="text-base font-extrabold text-amber-700">Rp 0</p>
+                            </div>
+                            <div class="border-t border-amber-100 pt-2">
+                                <p class="text-[11px] text-slate-500">Total Terkumpul</p>
+                                <p id="recapTotalSim2" class="text-sm font-bold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Orange Block -->
+                    <div class="rounded-xl overflow-hidden border border-orange-200 bg-orange-50/30">
+                        <div class="bg-orange-500 text-white p-2.5 text-center font-bold text-xs">
+                            <span id="recapTitleSim3">Hasil Rata-rata Simpanan 6.5%</span>
+                        </div>
+                        <div class="p-3 text-center space-y-2">
+                            <div>
+                                <p class="text-[11px] text-slate-500">Rata-rata / Hari</p>
+                                <p id="recapAvgSim3" class="text-base font-extrabold text-orange-700">Rp 0</p>
+                            </div>
+                            <div class="border-t border-orange-100 pt-2">
+                                <p class="text-[11px] text-slate-500">Total Terkumpul</p>
+                                <p id="recapTotalSim3" class="text-sm font-bold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Red Block -->
+                    <div class="rounded-xl overflow-hidden border border-rose-200 bg-rose-50/30">
+                        <div class="bg-rose-600 text-white p-2.5 text-center font-bold text-xs">
+                            <span id="recapTitleSim4">Hasil Rata-rata Simpanan 6.0%</span>
+                        </div>
+                        <div class="p-3 text-center space-y-2">
+                            <div>
+                                <p class="text-[11px] text-slate-500">Rata-rata / Hari</p>
+                                <p id="recapAvgSim4" class="text-base font-extrabold text-rose-700">Rp 0</p>
+                            </div>
+                            <div class="border-t border-rose-100 pt-2">
+                                <p class="text-[11px] text-slate-500">Total Terkumpul</p>
+                                <p id="recapTotalSim4" class="text-sm font-bold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
-                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Simpasan 7.5% Gabungan</div>
-                    <div id="srv-grand-s75" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
-                    <div class="text-xs text-gray-500 mt-1">Simpasan otomatis 7.5%</div>
+
+                <!-- Bottom Summary Highlights -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div class="p-4 rounded-2xl bg-emerald-500 text-white flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-xs text-emerald-100 font-medium">Total Akumulasi 4 Simpanan</p>
+                            <h3 id="recapGrandTotalSimpanan" class="text-2xl font-black mt-1">Rp 0</h3>
+                        </div>
+                        <i class="fa-solid fa-piggy-bank text-3xl opacity-80"></i>
+                    </div>
+
+                    <div class="p-4 rounded-2xl bg-sky-500 text-white flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-xs text-sky-100 font-medium">Omset Rata-Rata / Hari</p>
+                            <h3 id="recapGrandAvgOmset" class="text-2xl font-black mt-1">Rp 0</h3>
+                        </div>
+                        <i class="fa-solid fa-chart-line text-3xl opacity-80"></i>
+                    </div>
+
+                    <div class="p-4 rounded-2xl bg-purple-600 text-white flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-xs text-purple-100 font-medium">Total Belanja Toko</p>
+                            <h3 id="recapGrandTotalBelanja" class="text-2xl font-black mt-1">Rp 0</h3>
+                        </div>
+                        <i class="fa-solid fa-receipt text-3xl opacity-80"></i>
+                    </div>
                 </div>
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
-                    <div class="text-xs font-semibold text-gray-400 uppercase">Total Belanja Gabungan</div>
-                    <div id="srv-grand-belanja" class="text-2xl font-extrabold text-purple-300 mt-1">Rp0</div>
-                    <div id="srv-grand-days" class="text-xs text-gray-500 mt-1">Total hari aktif: 0 hr</div>
-                </div>
-                <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-lg">
-                    <div class="text-xs font-semibold text-gray-400 uppercase">Selisih Bersih Server</div>
-                    <div id="srv-grand-net" class="text-2xl font-extrabold text-emerald-400 mt-1">Rp0</div>
-                    <div class="text-xs text-gray-500 mt-1">Omset - Belanja - Simpasan 7.5%</div>
-                </div>
+
             </div>
 
-            <!-- Log Activity Banner -->
-            <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-3">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-base font-bold text-white">Log Aktivitas Masuk Real-Time</h3>
-                        <p class="text-xs text-gray-400">Setiap perubahan input dari toko cabang langsung tercatat di bawah secara otomatis.</p>
-                    </div>
-                </div>
-                <ul id="server-logs-list" class="space-y-1.5 text-xs max-h-48 overflow-y-auto">
-                    <!-- Dynamic logs -->
-                </ul>
-            </div>
-
-            <!-- Multi-Store Overview Table -->
-            <div class="bg-[#0d0d10] border border-[#222228] rounded-2xl overflow-hidden shadow-xl">
-                <div class="p-4 sm:p-5 border-b border-[#222228] flex items-center justify-between">
-                    <div>
-                        <h3 class="text-base font-bold text-white">Ringkasan & Akses Cepat Semua Cabang</h3>
-                        <p class="text-xs text-gray-400">Pantau performa harian masing-masing toko cabang.</p>
-                    </div>
-                    <button onclick="switchServerTab('manage')" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">
-                        + Kelola Toko & Link
-                    </button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse text-xs tabular-nums">
-                        <thead>
-                            <tr class="bg-[#141419] text-gray-200 font-bold border-b border-[#222228]">
-                                <th class="py-3 px-4 text-left">Kode & Nama Toko</th>
-                                <th class="py-3 px-3 text-center">Hari Aktif</th>
-                                <th class="py-3 px-3 text-right">Omset Rata-Rata</th>
-                                <th class="py-3 px-3 text-right">Total Omset</th>
-                                <th class="py-3 px-3 text-right text-emerald-400">Simpasan 7.5%</th>
-                                <th class="py-3 px-3 text-right text-purple-300">Total Belanja</th>
-                                <th class="py-3 px-3 text-right">Selisih</th>
-                                <th class="py-3 px-4 text-center">Aksi & Link Cabang</th>
-                            </tr>
-                        </thead>
-                        <tbody id="server-stores-tbody">
-                            <!-- Dynamic Store Summaries -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION C: MANAGE STORES TAB (Only in Central Mode) -->
-        <div id="view-manage" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div class="lg:col-span-4 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl">
-                <h3 id="manage-form-title" class="text-base font-bold text-white mb-1">Tambah Toko Cabang Baru</h3>
-                <p class="text-xs text-gray-400 mb-4">Setiap toko memiliki link khusus `#tk-01`, `#tk-02`, dst.</p>
-
-                <form onsubmit="handleSaveStoreForm(event)" class="space-y-3.5">
-                    <input type="hidden" id="manage-store-id" value="" />
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Kode Toko *</label>
-                        <input type="text" id="manage-code" placeholder="TK-01" required class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Nama Toko *</label>
-                        <input type="text" id="manage-name" placeholder="Toko Cabang Barat" required class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Alamat / Lokasi</label>
-                        <input type="text" id="manage-location" placeholder="Jl. Sudirman No. 45" class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">PIC / Penanggung Jawab</label>
-                        <input type="text" id="manage-manager" placeholder="Nama Kepala Toko" class="w-full rounded-xl bg-black border border-[#222228] px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
-                    </div>
-                    <div class="flex items-center gap-2 pt-1">
-                        <button type="submit" class="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 text-xs shadow transition cursor-pointer">
-                            Simpan Toko
-                        </button>
-                        <button type="button" onclick="resetManageForm()" class="rounded-xl bg-[#141419] hover:bg-[#1f1f26] text-gray-300 border border-[#222228] font-semibold py-2 px-3 text-xs cursor-pointer">
-                            Batal
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="lg:col-span-8 bg-[#0d0d10] border border-[#222228] rounded-2xl p-5 shadow-xl space-y-4">
-                <div>
-                    <h3 class="text-base font-bold text-white">Daftar Toko & Link Masing-Masing</h3>
-                    <p class="text-xs text-gray-400">Salin link khusus cabang untuk dikirimkan ke kasir/PIC toko. Saat dibuka lewat link tersebut, tampilannya <b>murni hanya Buku Toko cabang itu saja</b>.</p>
-                </div>
-                <div id="manage-store-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- Dynamic Store Cards -->
-                </div>
-            </div>
         </div>
 
     </main>
 
     <!-- FOOTER -->
-    <footer class="border-t border-[#222228] bg-black py-4 px-4 sm:px-6 text-xs text-gray-500">
-        <div class="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span id="footer-text">Server Pusat Multi-Toko</span>
-            <span>Skema Simpasan: 7.5% • 7% • 6.5% • 6% Dari Omset</span>
+    <footer class="bg-slate-900 text-slate-400 py-6 text-center text-xs border-t border-slate-800 no-print mt-auto">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p>© 2026 Buku Toko Online. Multi-Toko Link Architecture & Firestore Sync.</p>
+            <div class="flex items-center gap-3 text-slate-500">
+                <span class="flex items-center gap-1"><i class="fa-solid fa-shield-halved text-emerald-500"></i> Cloud Realtime</span>
+                <span>•</span>
+                <span id="footerUserRole" class="text-slate-300 font-semibold">Toko 1</span>
+            </div>
         </div>
     </footer>
 
-    <!-- NATIVE JS LOGIC -->
-    <script>
-        // Error Handler Guardrail
-        window.onerror = function(msg, url, line) {
-            document.getElementById('error-banner').classList.remove('hidden');
-            document.getElementById('error-msg').innerText = "Catatan Sistem: " + msg + " (Baris " + line + ")";
-            return false;
-        };
 
-        const LOCAL_STORAGE_KEY = 'multi_toko_native_db_v3';
-        const FIREBASE_URL_KEY = 'multi_toko_fb_url_v3';
-        const BROADCAST_CHANNEL_NAME = 'multi_toko_channel_native_v3';
-        const DEFAULT_DATE = '2026-11-20';
-
-        const DEFAULT_STORES = [
-            { id: 'toko-1', code: 'TK-01', name: 'Toko Pusat Utama', location: 'Jl. Merdeka No. 1', manager: 'Admin Server' },
-            { id: 'toko-2', code: 'TK-02', name: 'Toko Cabang Barat', location: 'Jl. Sudirman No. 45', manager: 'Budi' },
-            { id: 'toko-3', code: 'TK-03', name: 'Toko Cabang Timur', location: 'Jl. Ahmad Yani No. 88', manager: 'Siti' }
-        ];
-
-        const DAYS_ID = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
-
-        function addDays(isoStr, n) {
-            const parts = isoStr.split('-');
-            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            dt.setDate(dt.getDate() + n);
-            const y = dt.getFullYear();
-            const m = String(dt.getMonth() + 1).padStart(2, '0');
-            const d = String(dt.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        }
-
-        function getHariName(isoStr) {
-            if (!isoStr) return 'senin';
-            const parts = isoStr.split('-');
-            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            return DAYS_ID[dt.getDay()] || 'senin';
-        }
-
-        function buildEmptyRows(endDateISO = DEFAULT_DATE, totalDays = 22) {
-            const startISO = addDays(endDateISO, -(totalDays - 1));
-            const rows = [];
-            for (let i = 0; i < totalDays; i++) {
-                const dateStr = addDays(startISO, i);
-                rows.push({
-                    id: `row-${i + 1}-${dateStr}`,
-                    no: i + 1,
-                    date: dateStr,
-                    day: getHariName(dateStr),
-                    omzet: 0,
-                    belanja: 0,
-                    customPercent: ''
-                });
-            }
-            return rows;
-        }
-
-        function buildInitialTxMap(storeList) {
-            const map = {};
-            storeList.forEach(st => {
-                map[st.id] = buildEmptyRows(DEFAULT_DATE, 22);
-            });
-            return map;
-        }
-
-        // Global State Container
-        let appState = {
-            stores: DEFAULT_STORES,
-            transactions: buildInitialTxMap(DEFAULT_STORES),
-            logs: [{ id: '1', time: new Date().toLocaleTimeString('id-ID'), message: 'Sistem Multi-Toko Siap' }],
-            updatedAt: Date.now()
-        };
-
-        let activeStoreId = 'toko-1';
-        let currentServerTab = 'dashboard';
-        let isBranchMode = false;
-        let firebaseDbUrl = '';
-        let broadcastChannel = null;
-        let eventSource = null;
-
-        // Number Formatters
-        function formatRupiah(val) {
-            const num = Number(val) || 0;
-            const isNeg = num < 0;
-            const abs = Math.abs(num);
-            const hasFrac = Math.abs(abs - Math.round(abs)) > 0.001;
-            const formatted = new Intl.NumberFormat('id-ID', {
-                minimumFractionDigits: hasFrac ? 1 : 0,
-                maximumFractionDigits: hasFrac ? 1 : 0
-            }).format(abs);
-            return (isNeg ? '-' : '') + 'Rp' + formatted;
-        }
-
-        function formatAvgRupiah(val) {
-            const num = Math.round(Math.abs(Number(val) || 0));
-            const formatted = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(num);
-            return (Number(val) < 0 ? '-' : '') + 'Rp' + formatted;
-        }
-
-        function computeSimpasan(omzet) {
-            const o = Math.max(0, Number(omzet) || 0);
-            return {
-                s75: o * 0.075,
-                s70: o * 0.070,
-                s65: o * 0.065,
-                s60: o * 0.060
-            };
-        }
-
-        function computeRowPercent(r) {
-            if (r.customPercent !== '' && r.customPercent !== undefined && r.customPercent !== null) {
-                const parsed = Number(r.customPercent);
-                if (!isNaN(parsed)) return Math.max(0, Math.min(100, Math.round(parsed)));
-            }
-            const o = Math.max(0, Number(r.omzet) || 0);
-            const b = Math.max(0, Number(r.belanja) || 0);
-            if (o <= 0) return 0;
-            return Math.max(0, Math.min(100, Math.round((b / o) * 100)));
-        }
-
-        function getSlug(code) {
-            return '#' + (code || 'TK-01').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
-        }
-
-        function getFullStoreUrl(code) {
-            const hash = getSlug(code);
-            try {
-                return window.location.href.split('#')[0] + hash;
-            } catch (e) {
-                return hash;
-            }
-        }
-
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.classList.remove('hidden');
-            setTimeout(() => t.classList.add('hidden'), 3000);
-        }
-
-        function triggerPulse(text = 'Lokal') {
-            const badge = document.getElementById('sync-status-badge');
-            const dot = document.getElementById('sync-dot');
-            const syncText = document.getElementById('sync-text');
-            const syncTime = document.getElementById('sync-time');
-
-            syncTime.innerText = new Date().toLocaleTimeString('id-ID');
-            syncText.innerText = text;
-            
-            badge.classList.add('bg-amber-500/20', 'border-amber-500/40');
-            dot.classList.add('animate-ping', 'bg-amber-400');
-
-            setTimeout(() => {
-                badge.classList.remove('bg-amber-500/20', 'border-amber-500/40');
-                dot.classList.remove('animate-ping', 'bg-amber-400');
-            }, 800);
-        }
-
-        // Persistence & Save Function
-        function saveAppState(logMsg = '') {
-            appState.updatedAt = Date.now();
-            if (logMsg) {
-                const entry = {
-                    id: Date.now().toString(),
-                    time: new Date().toLocaleTimeString('id-ID'),
-                    message: logMsg
-                };
-                appState.logs = [entry, ...(appState.logs || [])].slice(0, 25);
-            }
-
-            // LocalStorage
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appState));
-            } catch (e) {}
-
-            // BroadcastChannel
-            if (broadcastChannel) {
-                try {
-                    broadcastChannel.postMessage(appState);
-                } catch (e) {}
-            }
-
-            // Firebase Cloud Push
-            if (firebaseDbUrl) {
-                try {
-                    const cleanUrl = firebaseDbUrl.replace(/\/+$/, '');
-                    fetch(`${cleanUrl}/multi_toko_live.json`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(appState)
-                    }).catch(err => console.warn('Firebase sync error:', err));
-                } catch (e) {}
-            }
-
-            triggerPulse(firebaseDbUrl ? 'Cloud Live' : 'Lokal');
-            renderAllViews();
-        }
-
-        function loadLocalState() {
-            try {
-                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (parsed && Array.isArray(parsed.stores)) {
-                        appState = parsed;
-                    }
-                }
-            } catch (e) {}
-
-            try {
-                const urlRaw = localStorage.getItem(FIREBASE_URL_KEY);
-                if (urlRaw) firebaseDbUrl = urlRaw;
-            } catch (e) {}
-        }
-
-        // Routing & Hash Detection
-        function detectRouting() {
-            const rawHash = (window.location.hash || '').toLowerCase().trim();
-            isBranchMode = Boolean(rawHash && rawHash !== '#');
-
-            const headerBadge = document.getElementById('header-badge');
-            const headerTitle = document.getElementById('header-title');
-            const headerSub = document.getElementById('header-sub');
-            const serverNavTabs = document.getElementById('server-nav-tabs');
-            const storeSelectorWrap = document.getElementById('store-selector-wrapper');
-            const footerText = document.getElementById('footer-text');
-
-            if (isBranchMode) {
-                const cleanHash = rawHash.replace(/^#/, '');
-                const matched = appState.stores.find(s => 
-                    s.code.toLowerCase() === cleanHash ||
-                    s.id.toLowerCase() === cleanHash ||
-                    s.code.toLowerCase().replace(/[^a-z0-9-]/g, '-') === cleanHash
-                );
-                if (matched) {
-                    activeStoreId = matched.id;
-                } else if (appState.stores.length > 0) {
-                    activeStoreId = appState.stores[0].id;
-                }
-
-                const currentStore = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-                headerBadge.className = "w-10 h-10 rounded-xl bg-emerald-500 text-black flex items-center justify-center font-black text-sm shadow-lg shadow-emerald-500/20";
-                headerBadge.innerText = currentStore.code;
-                headerTitle.innerText = `Buku Toko — ${currentStore.name}`;
-                headerSub.innerText = `Cabang ${currentStore.code} • ${currentStore.location} • PIC: ${currentStore.manager}`;
-                footerText.innerText = `Buku Toko Cabang — ${currentStore.code} (${currentStore.name})`;
-
-                serverNavTabs.classList.add('hidden');
-                storeSelectorWrap.classList.add('hidden');
-
-                document.getElementById('view-ledger').classList.remove('hidden');
-                document.getElementById('view-dashboard').classList.add('hidden');
-                document.getElementById('view-manage').classList.add('hidden');
-            } else {
-                headerBadge.className = "w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg shadow-blue-600/20";
-                headerBadge.innerText = "SRV";
-                headerTitle.innerText = "Server Pusat Multi-Toko";
-                headerSub.innerText = `Pantau & Kelola (${appState.stores.length} Cabang Toko)`;
-                footerText.innerText = "Server Pusat Multi-Toko • Pemantauan Real-Time";
-
-                serverNavTabs.classList.remove('hidden');
-                storeSelectorWrap.classList.remove('hidden');
-                storeSelectorWrap.classList.add('flex');
-
-                switchServerTab(currentServerTab);
-            }
-
-            renderAllViews();
-        }
-
-        function switchServerTab(tab) {
-            currentServerTab = tab;
-            document.getElementById('tab-btn-dashboard').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'dashboard' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
-            document.getElementById('tab-btn-ledger').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'ledger' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
-            document.getElementById('tab-btn-manage').className = `px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${tab === 'manage' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`;
-
-            document.getElementById('view-dashboard').classList.toggle('hidden', tab !== 'dashboard');
-            document.getElementById('view-ledger').classList.toggle('hidden', tab !== 'ledger');
-            document.getElementById('view-manage').classList.toggle('hidden', tab !== 'manage');
-
-            renderAllViews();
-        }
-
-        function handleSelectStore(stId) {
-            activeStoreId = stId;
-            renderAllViews();
-        }
-
-        // Render Functions
-        function renderAllViews() {
-            renderStoreSelector();
-            renderLedgerView();
-            if (!isBranchMode) {
-                renderServerDashboard();
-                renderManageStoresView();
-            }
-        }
-
-        function renderStoreSelector() {
-            const select = document.getElementById('store-selector');
-            select.innerHTML = appState.stores.map(s => 
-                `<option value="${s.id}" class="bg-black text-white" ${s.id === activeStoreId ? 'selected' : ''}>${s.code} — ${s.name}</option>`
-            ).join('');
-        }
-
-        function renderLedgerView() {
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0] || DEFAULT_STORES[0];
-            if (!store) return;
-
-            document.getElementById('branch-badge-code').innerText = store.code;
-            document.getElementById('branch-store-name').innerText = store.name;
-            document.getElementById('branch-store-meta').innerText = `Lokasi: ${store.location} • PIC: ${store.manager}`;
-
-            const rows = appState.transactions[store.id] || [];
-            const query = (document.getElementById('search-ledger').value || '').toLowerCase().trim();
-
-            let totalOmzet = 0;
-            let totalBelanja = 0;
-            let totalS75 = 0, totalS70 = 0, totalS65 = 0, totalS60 = 0;
-            let activeDaysCount = 0;
-            let pctSum = 0;
-
-            const tbody = document.getElementById('ledger-tbody');
-            tbody.innerHTML = '';
-
-            rows.forEach((r, idx) => {
-                const omz = Math.max(0, Number(r.omzet) || 0);
-                const blj = Math.max(0, Number(r.belanja) || 0);
-                const sim = computeSimpasan(omz);
-                const pct = computeRowPercent(r);
-
-                totalOmzet += omz;
-                totalBelanja += blj;
-                totalS75 += sim.s75;
-                totalS70 += sim.s70;
-                totalS65 += sim.s65;
-                totalS60 += sim.s60;
-                pctSum += pct;
-                if (omz > 0 || blj > 0) activeDaysCount += 1;
-
-                // Search Filter
-                if (query) {
-                    const dStr = (r.date || '').toLowerCase();
-                    const dayStr = (r.day || '').toLowerCase();
-                    if (!dStr.includes(query) && !dayStr.includes(query)) return;
-                }
-
-                const tr = document.createElement('tr');
-                tr.className = `border-b border-[#222228]/80 transition ${omz > 0 || blj > 0 ? 'bg-[#141419]/60' : 'bg-black'}`;
-                tr.innerHTML = `
-                    <td class="py-1.5 px-2 border-r border-[#222228] text-center font-semibold text-gray-400">${r.no || (idx + 1)}</td>
-                    <td class="py-1.5 px-2 border-r border-[#222228] text-left">
-                        <input type="date" value="${r.date || ''}" onchange="handleInlineCellEdit('${r.id}', 'date', this.value)" class="table-input text-blue-400 font-medium" />
-                    </td>
-                    <td class="py-1.5 px-2.5 border-r border-[#222228] text-left text-gray-300 capitalize">${r.day || getHariName(r.date)}</td>
-                    <td class="py-1.5 px-2 border-r border-[#222228] text-right">
-                        <input type="number" min="0" step="any" value="${omz === 0 ? '' : omz}" placeholder="0" onchange="handleInlineCellEdit('${r.id}', 'omzet', this.value)" class="table-input text-right font-semibold text-white" />
-                    </td>
-                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-emerald-500/90 text-black">${formatRupiah(sim.s75)}</td>
-                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-amber-400/90 text-black">${formatRupiah(sim.s70)}</td>
-                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-amber-500/90 text-black">${formatRupiah(sim.s65)}</td>
-                    <td class="py-1.5 px-3 border-r border-[#222228] text-right font-semibold bg-rose-500/90 text-white">${formatRupiah(sim.s60)}</td>
-                    <td class="py-1.5 px-2 border-r border-[#222228] text-right">
-                        <input type="number" min="0" step="any" value="${blj === 0 ? '' : blj}" placeholder="0" onchange="handleInlineCellEdit('${r.id}', 'belanja', this.value)" class="table-input text-right text-gray-200" />
-                    </td>
-                    <td class="py-1.5 px-2 border-r border-[#222228] text-center font-semibold text-gray-300">${pct}%</td>
-                    <td class="py-1.5 px-2 text-center whitespace-nowrap">
-                        <button onclick="handleClearRow('${r.id}')" title="Kosongkan" class="px-2 py-0.5 rounded bg-[#222228] hover:bg-[#33333e] text-gray-200 text-[10px] font-semibold mr-1 cursor-pointer">0</button>
-                        <button onclick="handleDeleteRow('${r.id}')" title="Hapus" class="px-2 py-0.5 rounded bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-[10px] font-semibold cursor-pointer">✕</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            const avgOmz = activeDaysCount > 0 ? totalOmzet / activeDaysCount : 0;
-            const avgS75 = activeDaysCount > 0 ? totalS75 / activeDaysCount : 0;
-            const avgS70 = activeDaysCount > 0 ? totalS70 / activeDaysCount : 0;
-            const avgS65 = activeDaysCount > 0 ? totalS65 / activeDaysCount : 0;
-            const avgS60 = activeDaysCount > 0 ? totalS60 / activeDaysCount : 0;
-            const avgPct = rows.length > 0 ? Math.round(pctSum / rows.length) : 0;
-            const netDiff = totalOmzet - totalBelanja - totalS75;
-
-            // Update KPI
-            document.getElementById('kpi-avg-omzet').innerText = formatAvgRupiah(avgOmz);
-            document.getElementById('kpi-active-days').innerText = `Hari aktif: ${activeDaysCount} / ${rows.length} hari`;
-            document.getElementById('kpi-total-omzet').innerText = formatRupiah(totalOmzet);
-            document.getElementById('kpi-total-s75').innerText = formatRupiah(totalS75);
-            document.getElementById('kpi-avg-s75').innerText = `Rata-rata: ${formatAvgRupiah(avgS75)}`;
-            document.getElementById('kpi-total-belanja').innerText = formatRupiah(totalBelanja);
-            document.getElementById('kpi-net-diff').innerText = `Selisih Bersih: ${formatRupiah(netDiff)}`;
-            document.getElementById('kpi-net-diff').className = `text-xs font-bold mt-1 ${netDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-
-            // Update Footer Table
-            document.getElementById('foot-s75').innerText = formatRupiah(totalS75);
-            document.getElementById('foot-s70').innerText = formatRupiah(totalS70);
-            document.getElementById('foot-s65').innerText = formatRupiah(totalS65);
-            document.getElementById('foot-s60').innerText = formatRupiah(totalS60);
-            document.getElementById('foot-belanja').innerText = formatRupiah(totalBelanja);
-            document.getElementById('foot-pct').innerText = avgPct + '%';
-            document.getElementById('foot-days').innerText = activeDaysCount + ' hr';
-
-            // Update Rekap Table
-            document.getElementById('rekap-avg-s75').innerText = formatAvgRupiah(avgS75);
-            document.getElementById('rekap-avg-s70').innerText = formatAvgRupiah(avgS70);
-            document.getElementById('rekap-avg-s65').innerText = formatAvgRupiah(avgS65);
-            document.getElementById('rekap-avg-s60').innerText = formatAvgRupiah(avgS60);
-
-            document.getElementById('rekap-days-1').innerText = activeDaysCount;
-            document.getElementById('rekap-days-2').innerText = activeDaysCount;
-            document.getElementById('rekap-days-3').innerText = activeDaysCount;
-            document.getElementById('rekap-days-4').innerText = activeDaysCount;
-
-            document.getElementById('rekap-total-s75').innerText = formatRupiah(totalS75);
-            document.getElementById('rekap-total-s70').innerText = formatRupiah(totalS70);
-            document.getElementById('rekap-total-s65').innerText = formatRupiah(totalS65);
-            document.getElementById('rekap-total-s60').innerText = formatRupiah(totalS60);
-
-            // Update Side Summary
-            document.getElementById('side-total-omzet').innerText = formatRupiah(totalOmzet);
-            document.getElementById('side-avg-omzet').innerText = formatAvgRupiah(avgOmz);
-            document.getElementById('side-total-belanja').innerText = formatRupiah(totalBelanja);
-            document.getElementById('side-net-omzet').innerText = formatRupiah(totalOmzet - totalS75);
-        }
-
-        function renderServerDashboard() {
-            let grandOmzet = 0;
-            let grandS75 = 0;
-            let grandBelanja = 0;
-            let grandDays = 0;
-
-            const tbody = document.getElementById('server-stores-tbody');
-            tbody.innerHTML = '';
-
-            appState.stores.forEach(st => {
-                const rows = appState.transactions[st.id] || [];
-                let storeOmzet = 0;
-                let storeBelanja = 0;
-                let storeS75 = 0;
-                let storeActiveDays = 0;
-
-                rows.forEach(r => {
-                    const o = Math.max(0, Number(r.omzet) || 0);
-                    const b = Math.max(0, Number(r.belanja) || 0);
-                    const sim = computeSimpasan(o);
-                    storeOmzet += o;
-                    storeBelanja += b;
-                    storeS75 += sim.s75;
-                    if (o > 0 || b > 0) storeActiveDays += 1;
-                });
-
-                const avgOmzet = storeActiveDays > 0 ? storeOmzet / storeActiveDays : 0;
-                const net = storeOmzet - storeBelanja - storeS75;
-
-                grandOmzet += storeOmzet;
-                grandS75 += storeS75;
-                grandBelanja += storeBelanja;
-                grandDays += storeActiveDays;
-
-                const tr = document.createElement('tr');
-                tr.className = "border-b border-[#222228]/80 hover:bg-[#141419]/60";
-                tr.innerHTML = `
-                    <td class="py-3 px-4">
-                        <div class="font-bold text-white">${st.code} — ${st.name}</div>
-                        <div class="text-[11px] text-gray-400">${st.location} • PIC: ${st.manager}</div>
-                    </td>
-                    <td class="py-3 px-3 text-center font-semibold text-gray-300">${storeActiveDays} hr</td>
-                    <td class="py-3 px-3 text-right font-semibold text-blue-400">${formatAvgRupiah(avgOmzet)}</td>
-                    <td class="py-3 px-3 text-right font-bold text-white">${formatRupiah(storeOmzet)}</td>
-                    <td class="py-3 px-3 text-right font-semibold text-emerald-400">${formatRupiah(storeS75)}</td>
-                    <td class="py-3 px-3 text-right font-semibold text-purple-300">${formatRupiah(storeBelanja)}</td>
-                    <td class="py-3 px-3 text-right font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatRupiah(net)}</td>
-                    <td class="py-3 px-4 text-center space-x-1.5 whitespace-nowrap">
-                        <button onclick="inspectStore('${st.id}')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">Pantau Buku</button>
-                        <button onclick="copyStoreLink('${st.code}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-semibold cursor-pointer">Salin Link (${getSlug(st.code)})</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            const grandNet = grandOmzet - grandBelanja - grandS75;
-            document.getElementById('srv-grand-omzet').innerText = formatRupiah(grandOmzet);
-            document.getElementById('srv-grand-stores').innerText = `Dari ${appState.stores.length} cabang aktif`;
-            document.getElementById('srv-grand-s75').innerText = formatRupiah(grandS75);
-            document.getElementById('srv-grand-belanja').innerText = formatRupiah(grandBelanja);
-            document.getElementById('srv-grand-days').innerText = `Total hari aktif: ${grandDays} hr`;
-            document.getElementById('srv-grand-net').innerText = formatRupiah(grandNet);
-            document.getElementById('srv-grand-net').className = `text-2xl font-extrabold mt-1 ${grandNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-
-            // Render Logs
-            const logsList = document.getElementById('server-logs-list');
-            logsList.innerHTML = (appState.logs || []).map(l => `
-                <li class="flex items-center justify-between gap-3 bg-black border border-[#222228] rounded-xl px-3 py-1.5">
-                    <span class="text-gray-200">${l.message}</span>
-                    <span class="text-gray-500 font-mono text-[11px]">${l.time}</span>
-                </li>
-            `).join('');
-        }
-
-        function renderManageStoresView() {
-            const container = document.getElementById('manage-store-cards');
-            container.innerHTML = appState.stores.map(st => {
-                const slug = getSlug(st.code);
-                return `
-                    <div class="rounded-2xl border border-[#222228] bg-black p-4 space-y-3">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <span class="px-2 py-0.5 rounded bg-[#141419] border border-[#222228] text-blue-400 text-xs font-bold">${st.code}</span>
-                                    <h4 class="text-sm font-bold text-white">${st.name}</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mt-1">${st.location}</p>
-                                <p class="text-xs text-gray-400">PIC: ${st.manager}</p>
-                            </div>
-                        </div>
-
-                        <div class="p-2.5 rounded-xl bg-[#0d0d10] border border-[#222228] text-xs font-mono text-blue-400 flex items-center justify-between">
-                            <span>${slug}</span>
-                            <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Akses Murni Cabang</span>
-                        </div>
-
-                        <div class="pt-2 border-t border-[#222228] flex items-center justify-between gap-2">
-                            <div class="flex items-center gap-1.5">
-                                <button onclick="inspectStore('${st.id}')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer">Buka Buku</button>
-                                <button onclick="copyStoreLink('${st.code}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-medium cursor-pointer">Salin Link</button>
-                                <button onclick="editStore('${st.id}')" class="px-2.5 py-1.5 rounded-lg bg-[#141419] hover:bg-[#1f1f26] text-gray-200 border border-[#222228] text-xs font-medium cursor-pointer">Edit</button>
-                            </div>
-                            <button onclick="deleteStore('${st.id}')" class="px-2.5 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-xs font-medium cursor-pointer">Hapus</button>
-                        </div>
+    <!-- MODAL: SHARE / COPY DIRECT LINKS -->
+    <div id="shareModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-share-nodes text-sky-400"></i> Bagikan Link Akses Langsung
+                </h3>
+                <button onclick="closeShareModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <p class="text-xs text-slate-600">Pilih dan salin link di bawah ini sesuai peran. Ketika link dibuka, sistem akan langsung mengarahkan ke halaman terkait:</p>
+
+                <!-- Toko 1 Link Box -->
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span id="shareLabelToko1" class="text-xs font-bold text-sky-700">Toko 1</span>
+                        <button onclick="copyRoleLink('toko1')" class="text-xs bg-sky-600 hover:bg-sky-700 text-white font-semibold px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Salin
+                        </button>
                     </div>
-                `;
-            }).join('');
+                    <input type="text" id="shareUrlToko1" readonly class="w-full text-xs font-mono bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-slate-600 select-all">
+                </div>
+
+                <!-- Toko 2 Link Box -->
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span id="shareLabelToko2" class="text-xs font-bold text-emerald-700">Toko 2</span>
+                        <button onclick="copyRoleLink('toko2')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Salin
+                        </button>
+                    </div>
+                    <input type="text" id="shareUrlToko2" readonly class="w-full text-xs font-mono bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-slate-600 select-all">
+                </div>
+
+                <!-- Server Link Box -->
+                <div class="p-3 bg-purple-50/60 border border-purple-200 rounded-xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-purple-800">Server / Admin Pusat</span>
+                        <button onclick="copyRoleLink('server')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Salin
+                        </button>
+                    </div>
+                    <input type="text" id="shareUrlServer" readonly class="w-full text-xs font-mono bg-white border border-purple-200 px-2.5 py-1.5 rounded-lg text-slate-600 select-all">
+                </div>
+
+                <div class="text-right pt-2 border-t border-slate-100">
+                    <button onclick="closeShareModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs hover:bg-slate-200">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- MODAL: ADD / EDIT ENTRY -->
+    <div id="entryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
+                <h3 id="modalTitle" class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-sky-400"></i> Catat Hari Baru
+                </h3>
+                <button onclick="closeEntryModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="entryForm" onsubmit="handleSaveEntry(event)" class="p-5 space-y-4">
+                <input type="hidden" id="editDocId">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal</label>
+                    <input type="date" id="inputDate" required onchange="autoFillDay()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Hari</label>
+                    <input type="text" id="inputDay" readonly class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-600 font-semibold">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Omset / Pendapatan Harian (Rp)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">Rp</span>
+                        <input type="number" id="inputOmset" min="0" step="100" placeholder="0" oninput="calculateLivePercentages()" required class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
+                    <p class="font-bold text-slate-700 text-[11px] uppercase tracking-wider mb-1">Pratinjau Alokasi Simpanan Otomatis:</p>
+                    <div class="grid grid-cols-2 gap-2 text-slate-600">
+                        <div>Simpanan 1 (<span id="prevP1">7.5%</span>): <span id="prevVal1" class="font-bold text-emerald-600">Rp 0</span></div>
+                        <div>Simpanan 2 (<span id="prevP2">7.0%</span>): <span id="prevVal2" class="font-bold text-amber-600">Rp 0</span></div>
+                        <div>Simpanan 3 (<span id="prevP3">6.5%</span>): <span id="prevVal3" class="font-bold text-orange-600">Rp 0</span></div>
+                        <div>Simpanan 4 (<span id="prevP4">6.0%</span>): <span id="prevVal4" class="font-bold text-rose-600">Rp 0</span></div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Total Belanja / Pengeluaran (Rp)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">Rp</span>
+                        <input type="number" id="inputBelanja" min="0" step="100" placeholder="0" class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Catatan / Keterangan (Opsional)</label>
+                    <input type="text" id="inputNotes" placeholder="Misal: Belanja perlengkapan / Pas ramai" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-700 focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" onclick="closeEntryModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100">Batal</button>
+                    <button type="submit" id="btnSaveSubmit" class="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- MODAL: SETTINGS -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-amber-400"></i> Pengaturan Toko & Persentase
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="settingsForm" onsubmit="handleSaveSettings(event)" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Toko 1</label>
+                    <input type="text" id="setToko1Name" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Toko 2</label>
+                    <input type="text" id="setToko2Name" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <hr class="border-slate-100">
+
+                <p class="text-xs font-bold text-slate-800 uppercase tracking-wider">Atur Persentase Alokasi Simpanan (%):</p>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-emerald-700 mb-1">Simpanan 1 (Hijau)</label>
+                        <input type="number" id="setPct1" step="0.1" min="0" max="100" required class="w-full px-3 py-2 rounded-xl border border-emerald-300 text-sm font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-amber-700 mb-1">Simpanan 2 (Kuning)</label>
+                        <input type="number" id="setPct2" step="0.1" min="0" max="100" required class="w-full px-3 py-2 rounded-xl border border-amber-300 text-sm font-bold text-amber-800 focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-orange-700 mb-1">Simpanan 3 (Oranye)</label>
+                        <input type="number" id="setPct3" step="0.1" min="0" max="100" required class="w-full px-3 py-2 rounded-xl border border-orange-300 text-sm font-bold text-orange-800 focus:ring-2 focus:ring-orange-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-rose-700 mb-1">Simpanan 4 (Merah)</label>
+                        <input type="number" id="setPct4" step="0.1" min="0" max="100" required class="w-full px-3 py-2 rounded-xl border border-rose-300 text-sm font-bold text-rose-800 focus:ring-2 focus:ring-rose-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100">Batal</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs shadow-md">Simpan Pengaturan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- MODAL: CONFIRM DELETE -->
+    <div id="deleteConfirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-800 text-base">Hapus Catatan Ini?</h3>
+                <p class="text-xs text-slate-500 mt-1">Data yang dihapus akan terhapus dari server secara permanen.</p>
+            </div>
+            <div class="flex items-center justify-center gap-2 pt-2">
+                <button onclick="closeDeleteModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100 w-1/2">Batal</button>
+                <button id="btnConfirmDelete" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold w-1/2 shadow-md">Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+
+    <!-- FIREBASE & MAIN SCRIPT -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // App & Firebase Configuration
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'buku-toko-online-v2';
+        
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : {
+                apiKey: "AIzaSyDemoConfigKeyForSpreadsheetApp123456",
+                authDomain: "demo-buku-toko.firebaseapp.com",
+                projectId: "demo-buku-toko",
+                storageBucket: "demo-buku-toko.appspot.com",
+                messagingSenderId: "1234567890",
+                appId: "1:1234567890:web:abcdef123456"
+              };
+
+        let app, db, auth;
+        let isFirebaseAvailable = false;
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            isFirebaseAvailable = true;
+        } catch (e) {
+            console.warn("Firebase initialization skipped, running in local mode:", e);
         }
 
-        // Ledger Operations
-        function handleInlineCellEdit(rowId, field, val) {
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-            const rows = appState.transactions[store.id] || [];
-            const updated = rows.map(r => {
-                if (r.id !== rowId) return r;
-                if (field === 'date') return { ...r, date: val, day: getHariName(val) };
-                if (field === 'omzet' || field === 'belanja') return { ...r, [field]: val === '' ? 0 : Math.max(0, Number(val) || 0) };
-                return { ...r, [field]: val };
+        // Global State
+        window.appState = {
+            role: 'toko1', // Determined by window.location.hash (#toko1, #toko2, #server)
+            records: [],
+            settings: {
+                toko1Name: 'Toko 1',
+                toko2Name: 'Toko 2',
+                pct1: 7.5,
+                pct2: 7.0,
+                pct3: 6.5,
+                pct4: 6.0
+            },
+            pendingDeleteId: null,
+            chartInstance: null
+        };
+
+        const DAYS_ID = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+        // Initialize Firebase Authentication & Realtime Listeners
+        async function initAuthAndSync() {
+            updateSyncBadge('connecting', 'Menghubungkan...');
+
+            if (!isFirebaseAvailable) {
+                updateSyncBadge('offline', 'Mode Lokal (Offline)');
+                loadFromLocalStorage();
+                renderAll();
+                return;
+            }
+
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                updateSyncBadge('online', 'Cloud Sync Active');
+                setupFirestoreListeners();
+            } catch (err) {
+                console.error("Auth/Connection error:", err);
+                updateSyncBadge('offline', 'Mode Offline');
+                loadFromLocalStorage();
+                renderAll();
+            }
+        }
+
+        // Firestore Listeners
+        function setupFirestoreListeners() {
+            const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'daily_records');
+            const settingsDoc = doc(db, 'artifacts', appId, 'public', 'data', 'store_settings', 'config');
+
+            // 1. Settings listener
+            onSnapshot(settingsDoc, (snapshot) => {
+                if (snapshot.exists()) {
+                    window.appState.settings = { ...window.appState.settings, ...snapshot.data() };
+                    saveSettingsToLocalStorage();
+                    renderAll();
+                }
+            }, (err) => console.error("Settings snapshot error:", err));
+
+            // 2. Records listener
+            onSnapshot(recordsCol, (snapshot) => {
+                const fetched = [];
+                snapshot.forEach(docSnap => {
+                    fetched.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                window.appState.records = fetched;
+                saveToLocalStorage();
+                renderAll();
+            }, (err) => {
+                console.error("Records snapshot error:", err);
+                showToast("Menggunakan data lokal terkini", "info");
+            });
+        }
+
+        // LocalStorage Helpers
+        function saveToLocalStorage() {
+            localStorage.setItem('buku_toko_records_v2', JSON.stringify(window.appState.records));
+        }
+        function saveSettingsToLocalStorage() {
+            localStorage.setItem('buku_toko_settings_v2', JSON.stringify(window.appState.settings));
+        }
+        function loadFromLocalStorage() {
+            const r = localStorage.getItem('buku_toko_records_v2');
+            if (r) window.appState.records = JSON.parse(r);
+            const s = localStorage.getItem('buku_toko_settings_v2');
+            if (s) window.appState.settings = JSON.parse(s);
+        }
+
+        // Status Badge
+        function updateSyncBadge(status, text) {
+            const badge = document.getElementById('syncBadge');
+            const dot = document.getElementById('syncDot');
+            const label = document.getElementById('syncText');
+
+            label.innerText = text;
+            if (status === 'online') {
+                badge.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+            } else if (status === 'offline') {
+                badge.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20";
+                dot.className = "w-2 h-2 rounded-full bg-slate-400";
+            } else {
+                badge.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20";
+                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+            }
+        }
+
+        // --- HASH ROUTING LOGIC ---
+        function detectRoleFromHash() {
+            const hash = window.location.hash.toLowerCase();
+            if (hash === '#toko2') {
+                return 'toko2';
+            } else if (hash === '#server') {
+                return 'server';
+            } else {
+                // Default to toko1 if hash is empty (#toko1 or invalid)
+                return 'toko1';
+            }
+        }
+
+        window.applyRoleFromUrl = function() {
+            const role = detectRoleFromHash();
+            window.appState.role = role;
+
+            const activeAvatar = document.getElementById('activeRoleAvatar');
+            const activeIcon = document.getElementById('activeRoleIcon');
+            const activeTitle = document.getElementById('activeRoleTitle');
+            const activeBadge = document.getElementById('activeRoleBadge');
+            const activeSub = document.getElementById('activeRoleSub');
+            const btnAddEntry = document.getElementById('btnAddEntry');
+            const btnCopyCurrentLink = document.getElementById('btnCopyCurrentLink');
+            const footerRole = document.getElementById('footerUserRole');
+            const s = window.appState.settings;
+
+            if (role === 'toko1') {
+                activeAvatar.className = "w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center text-xl font-extrabold shadow-sm";
+                activeIcon.className = "fa-solid fa-store";
+                activeTitle.innerText = s.toko1Name || "Toko 1";
+                activeBadge.innerText = "Link Khusus Toko 1";
+                activeBadge.className = "bg-sky-100 text-sky-700 text-xs px-2.5 py-0.5 rounded-full font-semibold";
+                activeSub.innerText = "Halaman input harian khusus untuk " + (s.toko1Name || "Toko 1");
+                btnAddEntry.classList.remove('hidden');
+                btnCopyCurrentLink.classList.remove('hidden');
+                footerRole.innerText = s.toko1Name || "Toko 1";
+
+                document.getElementById('serverDashboardView').classList.add('hidden');
+                document.getElementById('storeView').classList.remove('hidden');
+            } else if (role === 'toko2') {
+                activeAvatar.className = "w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl font-extrabold shadow-sm";
+                activeIcon.className = "fa-solid fa-shop";
+                activeTitle.innerText = s.toko2Name || "Toko 2";
+                activeBadge.innerText = "Link Khusus Toko 2";
+                activeBadge.className = "bg-emerald-100 text-emerald-700 text-xs px-2.5 py-0.5 rounded-full font-semibold";
+                activeSub.innerText = "Halaman input harian khusus untuk " + (s.toko2Name || "Toko 2");
+                btnAddEntry.classList.remove('hidden');
+                btnCopyCurrentLink.classList.remove('hidden');
+                footerRole.innerText = s.toko2Name || "Toko 2";
+
+                document.getElementById('serverDashboardView').classList.add('hidden');
+                document.getElementById('storeView').classList.remove('hidden');
+            } else if (role === 'server') {
+                activeAvatar.className = "w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-xl font-extrabold shadow-sm";
+                activeIcon.className = "fa-solid fa-server";
+                activeTitle.innerText = "Server Pusat / Rekapitulasi";
+                activeBadge.innerText = "Monitor Utama";
+                activeBadge.className = "bg-purple-100 text-purple-700 text-xs px-2.5 py-0.5 rounded-full font-semibold";
+                activeSub.innerText = "Dashboard pemantauan gabungan omset & simpanan dari semua cabang toko.";
+                btnAddEntry.classList.add('hidden');
+                btnCopyCurrentLink.classList.add('hidden');
+                footerRole.innerText = "Server Pusat";
+
+                document.getElementById('storeView').classList.add('hidden');
+                document.getElementById('serverDashboardView').classList.remove('hidden');
+            }
+
+            renderAll();
+        };
+
+        // Listen for Hash Changes in Browser URL
+        window.addEventListener('hashchange', () => {
+            window.applyRoleFromUrl();
+        });
+
+        // --- RENDER LOGIC ---
+        function renderAll() {
+            updateDynamicLabels();
+            if (window.appState.role === 'server') {
+                renderServerView();
+            } else {
+                renderStoreView();
+            }
+        }
+
+        function updateDynamicLabels() {
+            const s = window.appState.settings;
+
+            document.getElementById('thSim1').innerText = `Simpanan ${s.pct1}%`;
+            document.getElementById('thSim2').innerText = `Simpanan ${s.pct2}%`;
+            document.getElementById('thSim3').innerText = `Simpanan ${s.pct3}%`;
+            document.getElementById('thSim4').innerText = `Simpanan ${s.pct4}%`;
+
+            document.getElementById('labelSimpanan1').innerText = `Simpanan ${s.pct1}%`;
+            document.getElementById('labelSimpanan2').innerText = `Simpanan ${s.pct2}%`;
+            document.getElementById('labelSimpanan3').innerText = `Simpanan ${s.pct3}%`;
+            document.getElementById('labelSimpanan4').innerText = `Simpanan ${s.pct4}%`;
+
+            document.getElementById('recapTitleSim1').innerText = `Hasil Rata-rata Simpanan ${s.pct1}%`;
+            document.getElementById('recapTitleSim2').innerText = `Hasil Rata-rata Simpanan ${s.pct2}%`;
+            document.getElementById('recapTitleSim3').innerText = `Hasil Rata-rata Simpanan ${s.pct3}%`;
+            document.getElementById('recapTitleSim4').innerText = `Hasil Rata-rata Simpanan ${s.pct4}%`;
+
+            document.getElementById('serverToko1Name').innerText = s.toko1Name || "Toko 1";
+            document.getElementById('serverToko2Name').innerText = s.toko2Name || "Toko 2";
+            document.getElementById('serverLabelToko1').innerText = s.toko1Name || "Toko 1";
+            document.getElementById('serverLabelToko2').innerText = s.toko2Name || "Toko 2";
+            document.getElementById('shareLabelToko1').innerText = s.toko1Name || "Toko 1";
+            document.getElementById('shareLabelToko2').innerText = s.toko2Name || "Toko 2";
+        }
+
+        function getFilteredRecords(storeFilter) {
+            const monthVal = document.getElementById('filterMonth').value;
+            let filtered = window.appState.records;
+
+            if (storeFilter) {
+                filtered = filtered.filter(r => r.storeId === storeFilter);
+            }
+            if (monthVal) {
+                filtered = filtered.filter(r => r.date && r.date.startsWith(monthVal));
+            }
+
+            filtered.sort((a, b) => (a.date > b.date ? 1 : -1));
+            return filtered;
+        }
+
+        // Render Store Spreadsheet View
+        function renderStoreView() {
+            const currentStore = window.appState.role;
+            const records = getFilteredRecords(currentStore);
+            const s = window.appState.settings;
+
+            const tableBody = document.getElementById('tableBody');
+            const emptyState = document.getElementById('emptyState');
+            tableBody.innerHTML = '';
+
+            document.getElementById('recordCountBadge').innerText = `${records.length} Baris`;
+            if (records.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            let totalOmset = 0, totalSim1 = 0, totalSim2 = 0, totalSim3 = 0, totalSim4 = 0, totalBelanja = 0, activeDaysCount = 0;
+
+            records.forEach((row, idx) => {
+                const omset = Number(row.omset) || 0;
+                const belanja = Number(row.belanja) || 0;
+
+                const sim1 = omset * ((row.pct1 || s.pct1) / 100);
+                const sim2 = omset * ((row.pct2 || s.pct2) / 100);
+                const sim3 = omset * ((row.pct3 || s.pct3) / 100);
+                const sim4 = omset * ((row.pct4 || s.pct4) / 100);
+
+                const pctBelanja = omset > 0 ? ((belanja / omset) * 100).toFixed(0) : '0';
+
+                totalOmset += omset;
+                totalSim1 += sim1;
+                totalSim2 += sim2;
+                totalSim3 += sim3;
+                totalSim4 += sim4;
+                totalBelanja += belanja;
+
+                if (omset > 0 || belanja > 0) activeDaysCount++;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 text-center text-slate-400 font-semibold">${idx + 1}</td>
+                    <td class="py-2.5 px-3 font-medium text-slate-800">${formatDateID(row.date)}</td>
+                    <td class="py-2.5 px-3 text-slate-600">${row.dayName || '-'}</td>
+                    <td class="py-2.5 px-3 text-right font-bold text-sky-700 bg-sky-50/40">${formatRp(omset)}</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-emerald-700 bg-emerald-50/30">${formatRp(sim1)}</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-amber-700 bg-amber-50/30">${formatRp(sim2)}</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-orange-700 bg-orange-50/30">${formatRp(sim3)}</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-rose-700 bg-rose-50/30">${formatRp(sim4)}</td>
+                    <td class="py-2.5 px-3 text-right font-bold text-purple-700 bg-purple-50/30">${formatRp(belanja)}</td>
+                    <td class="py-2.5 px-3 text-center text-slate-500 font-bold">${pctBelanja}%</td>
+                    <td class="py-2.5 px-3 text-center no-print">
+                        <div class="flex items-center justify-center gap-1">
+                            <button onclick="editEntry('${row.id}')" class="w-7 h-7 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-700 flex items-center justify-center transition" title="Edit">
+                                <i class="fa-solid fa-pen text-[11px]"></i>
+                            </button>
+                            <button onclick="confirmDeleteEntry('${row.id}')" class="w-7 h-7 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 flex items-center justify-center transition" title="Hapus">
+                                <i class="fa-solid fa-trash text-[11px]"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
             });
 
-            appState.transactions[store.id] = updated;
-            saveAppState(`${store.code} ubah ${field}`);
+            // Footers
+            document.getElementById('footTotalOmset').innerText = formatRp(totalOmset);
+            document.getElementById('footSim1').innerText = formatRp(totalSim1);
+            document.getElementById('footSim2').innerText = formatRp(totalSim2);
+            document.getElementById('footSim3').innerText = formatRp(totalSim3);
+            document.getElementById('footSim4').innerText = formatRp(totalSim4);
+            document.getElementById('footTotalBelanja').innerText = formatRp(totalBelanja);
+
+            const avgPctBelanja = totalOmset > 0 ? ((totalBelanja / totalOmset) * 100).toFixed(0) : '0';
+            document.getElementById('footAvgPersen').innerText = `${avgPctBelanja}%`;
+
+            const avgDays = activeDaysCount > 0 ? activeDaysCount : (records.length > 0 ? records.length : 1);
+            const avgOmset = totalOmset / avgDays;
+
+            document.getElementById('cardTotalOmset').innerText = formatRp(totalOmset);
+            document.getElementById('cardAvgOmset').innerText = formatRp(avgOmset);
+            document.getElementById('cardSimpanan1').innerText = formatRp(totalSim1);
+            document.getElementById('cardSimpanan2').innerText = formatRp(totalSim2);
+            document.getElementById('cardSimpanan3').innerText = formatRp(totalSim3);
+            document.getElementById('cardSimpanan4').innerText = formatRp(totalSim4);
+            document.getElementById('cardTotalBelanja').innerText = formatRp(totalBelanja);
+
+            document.getElementById('recapAvgSim1').innerText = formatRp(totalSim1 / avgDays);
+            document.getElementById('recapTotalSim1').innerText = formatRp(totalSim1);
+
+            document.getElementById('recapAvgSim2').innerText = formatRp(totalSim2 / avgDays);
+            document.getElementById('recapTotalSim2').innerText = formatRp(totalSim2);
+
+            document.getElementById('recapAvgSim3').innerText = formatRp(totalSim3 / avgDays);
+            document.getElementById('recapTotalSim3').innerText = formatRp(totalSim3);
+
+            document.getElementById('recapAvgSim4').innerText = formatRp(totalSim4 / avgDays);
+            document.getElementById('recapTotalSim4').innerText = formatRp(totalSim4);
+
+            document.getElementById('recapGrandTotalSimpanan').innerText = formatRp(totalSim1 + totalSim2 + totalSim3 + totalSim4);
+            document.getElementById('recapGrandAvgOmset').innerText = formatRp(avgOmset);
+            document.getElementById('recapGrandTotalBelanja').innerText = formatRp(totalBelanja);
         }
 
-        function handleFormInputSubmit(e) {
-            e.preventDefault();
-            const dateVal = document.getElementById('input-form-date').value || DEFAULT_DATE;
-            const omzVal = Math.max(0, Number(document.getElementById('input-form-omzet').value) || 0);
-            const bljVal = Math.max(0, Number(document.getElementById('input-form-belanja').value) || 0);
-            const pctVal = document.getElementById('input-form-percent').value;
+        // Render Server View
+        function renderServerView() {
+            const t1Records = getFilteredRecords('toko1');
+            const t2Records = getFilteredRecords('toko2');
+            const s = window.appState.settings;
 
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-            const rows = appState.transactions[store.id] || [];
-            const idx = rows.findIndex(r => r.date === dateVal);
+            function calcSummary(recs) {
+                let omset = 0, simpanan = 0, belanja = 0, activeDays = 0;
+                recs.forEach(r => {
+                    const o = Number(r.omset) || 0;
+                    const b = Number(r.belanja) || 0;
+                    const s1 = o * ((r.pct1 || s.pct1) / 100);
+                    const s2 = o * ((r.pct2 || s.pct2) / 100);
+                    const s3 = o * ((r.pct3 || s.pct3) / 100);
+                    const s4 = o * ((r.pct4 || s.pct4) / 100);
 
-            let updatedRows = [];
-            if (idx >= 0) {
-                updatedRows = rows.map((r, i) => i === idx ? { ...r, day: getHariName(dateVal), omzet: omzVal, belanja: bljVal, customPercent: pctVal } : r);
-            } else {
-                updatedRows = [...rows, {
-                    id: `row-${Date.now()}`,
-                    no: rows.length + 1,
-                    date: dateVal,
-                    day: getHariName(dateVal),
-                    omzet: omzVal,
-                    belanja: bljVal,
-                    customPercent: pctVal
-                }];
+                    omset += o;
+                    simpanan += (s1 + s2 + s3 + s4);
+                    belanja += b;
+                    if (o > 0 || b > 0) activeDays++;
+                });
+                const avg = activeDays > 0 ? omset / activeDays : (recs.length > 0 ? omset / recs.length : 0);
+                return { omset, simpanan, belanja, activeDays, avg };
             }
 
-            appState.transactions[store.id] = updatedRows;
-            saveAppState(`${store.code} input ${dateVal}: Omset ${formatRupiah(omzVal)}`);
+            const t1 = calcSummary(t1Records);
+            const t2 = calcSummary(t2Records);
 
-            document.getElementById('input-form-omzet').value = '';
-            document.getElementById('input-form-belanja').value = '';
-            document.getElementById('input-form-percent').value = '';
-            showToast(`Data ${dateVal} tersimpan.`);
+            document.getElementById('serverTotalOmset').innerText = formatRp(t1.omset + t2.omset);
+            document.getElementById('serverTotalHari').innerText = `${t1.activeDays + t2.activeDays} Entri Hari`;
+            document.getElementById('serverTotalSimpanan').innerText = formatRp(t1.simpanan + t2.simpanan);
+            document.getElementById('serverTotalBelanja').innerText = formatRp(t1.belanja + t2.belanja);
+            document.getElementById('serverSaldoBersih').innerText = formatRp((t1.omset + t2.omset) - (t1.simpanan + t2.simpanan) - (t1.belanja + t2.belanja));
+
+            document.getElementById('t1SumOmset').innerText = formatRp(t1.omset);
+            document.getElementById('t1SumAvg').innerText = formatRp(t1.avg);
+            document.getElementById('t1SumSimpanan').innerText = formatRp(t1.simpanan);
+            document.getElementById('t1SumBelanja').innerText = formatRp(t1.belanja);
+
+            document.getElementById('t2SumOmset').innerText = formatRp(t2.omset);
+            document.getElementById('t2SumAvg').innerText = formatRp(t2.avg);
+            document.getElementById('t2SumSimpanan').innerText = formatRp(t2.simpanan);
+            document.getElementById('t2SumBelanja').innerText = formatRp(t2.belanja);
+
+            renderChart(t1Records, t2Records);
         }
 
-        function handleAddNewDateRow() {
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-            const rows = appState.transactions[store.id] || [];
-            const lastRow = rows[rows.length - 1];
-            const nextDate = lastRow && lastRow.date ? addDays(lastRow.date, 1) : DEFAULT_DATE;
+        function renderChart(t1Records, t2Records) {
+            const ctx = document.getElementById('serverChart').getContext('2d');
+            const dateSet = new Set([...t1Records.map(r => r.date), ...t2Records.map(r => r.date)]);
+            const dates = Array.from(dateSet).sort();
 
-            const newRow = {
-                id: `row-${Date.now()}`,
-                no: rows.length + 1,
-                date: nextDate,
-                day: getHariName(nextDate),
-                omzet: 0,
-                belanja: 0,
-                customPercent: ''
+            const t1Map = new Map(t1Records.map(r => [r.date, Number(r.omset) || 0]));
+            const t2Map = new Map(t2Records.map(r => [r.date, Number(r.omset) || 0]));
+
+            const dataT1 = dates.map(d => t1Map.get(d) || 0);
+            const dataT2 = dates.map(d => t2Map.get(d) || 0);
+            const labels = dates.map(d => formatDateID(d));
+
+            if (window.appState.chartInstance) {
+                window.appState.chartInstance.destroy();
+            }
+
+            const s = window.appState.settings;
+
+            window.appState.chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.length > 0 ? labels : ['Belum Ada Data'],
+                    datasets: [
+                        {
+                            label: s.toko1Name || 'Toko 1',
+                            data: dataT1.length > 0 ? dataT1 : [0],
+                            backgroundColor: 'rgba(2, 132, 199, 0.85)',
+                            borderRadius: 6
+                        },
+                        {
+                            label: s.toko2Name || 'Toko 2',
+                            data: dataT2.length > 0 ? dataT2 : [0],
+                            backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                            borderRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+
+        // --- LINK COPY & SHARE HELPERS ---
+        function getBaseUrl() {
+            return window.location.protocol + '//' + window.location.host + window.location.pathname;
+        }
+
+        window.openShareModal = function() {
+            const base = getBaseUrl();
+            document.getElementById('shareUrlToko1').value = base + '#toko1';
+            document.getElementById('shareUrlToko2').value = base + '#toko2';
+            document.getElementById('shareUrlServer').value = base + '#server';
+            document.getElementById('shareModal').classList.remove('hidden');
+        };
+
+        window.closeShareModal = function() {
+            document.getElementById('shareModal').classList.add('hidden');
+        };
+
+        window.copyRoleLink = function(targetRole) {
+            const url = getBaseUrl() + '#' + targetRole;
+            copyTextToClipboard(url);
+            const name = targetRole === 'toko1' ? window.appState.settings.toko1Name : targetRole === 'toko2' ? window.appState.settings.toko2Name : 'Server Pusat';
+            showToast(`Link khusus ${name} berhasil disalin!`, "success");
+        };
+
+        window.copyCurrentRoleLink = function() {
+            const currentRole = window.appState.role;
+            window.copyRoleLink(currentRole);
+        };
+
+        function copyTextToClipboard(text) {
+            const temp = document.createElement("input");
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand("copy");
+            document.body.removeChild(temp);
+        }
+
+        // --- NAVIGATION DROPDOWN ---
+        window.toggleNavMenu = function() {
+            document.getElementById('navDropdown').classList.toggle('hidden');
+        };
+        window.closeNavMenu = function() {
+            document.getElementById('navDropdown').classList.add('hidden');
+        };
+
+
+        // --- ENTRY & SETTINGS MODALS ---
+        window.openEntryModal = function() {
+            document.getElementById('editDocId').value = '';
+            document.getElementById('modalTitle').innerHTML = `<i class="fa-solid fa-pen-to-square text-sky-400"></i> Catat Hari Baru`;
+            document.getElementById('btnSaveSubmit').innerText = 'Simpan Data';
+
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('inputDate').value = today;
+            autoFillDay();
+
+            document.getElementById('inputOmset').value = '';
+            document.getElementById('inputBelanja').value = '';
+            document.getElementById('inputNotes').value = '';
+
+            calculateLivePercentages();
+            document.getElementById('entryModal').classList.remove('hidden');
+        };
+
+        window.closeEntryModal = function() {
+            document.getElementById('entryModal').classList.add('hidden');
+        };
+
+        window.autoFillDay = function() {
+            const dateVal = document.getElementById('inputDate').value;
+            if (dateVal) {
+                const d = new Date(dateVal);
+                document.getElementById('inputDay').value = DAYS_ID[d.getDay()] || '';
+            }
+        };
+
+        window.calculateLivePercentages = function() {
+            const omset = Number(document.getElementById('inputOmset').value) || 0;
+            const s = window.appState.settings;
+
+            document.getElementById('prevP1').innerText = `${s.pct1}%`;
+            document.getElementById('prevP2').innerText = `${s.pct2}%`;
+            document.getElementById('prevP3').innerText = `${s.pct3}%`;
+            document.getElementById('prevP4').innerText = `${s.pct4}%`;
+
+            document.getElementById('prevVal1').innerText = formatRp(omset * (s.pct1 / 100));
+            document.getElementById('prevVal2').innerText = formatRp(omset * (s.pct2 / 100));
+            document.getElementById('prevVal3').innerText = formatRp(omset * (s.pct3 / 100));
+            document.getElementById('prevVal4').innerText = formatRp(omset * (s.pct4 / 100));
+        };
+
+        window.handleSaveEntry = async function(e) {
+            e.preventDefault();
+
+            const docId = document.getElementById('editDocId').value;
+            const date = document.getElementById('inputDate').value;
+            const dayName = document.getElementById('inputDay').value;
+            const omset = Number(document.getElementById('inputOmset').value) || 0;
+            const belanja = Number(document.getElementById('inputBelanja').value) || 0;
+            const notes = document.getElementById('inputNotes').value.trim();
+            const storeId = window.appState.role;
+            const s = window.appState.settings;
+
+            const entryData = {
+                storeId,
+                date,
+                dayName,
+                omset,
+                belanja,
+                notes,
+                pct1: s.pct1,
+                pct2: s.pct2,
+                pct3: s.pct3,
+                pct4: s.pct4,
+                updatedAt: new Date().toISOString()
             };
 
-            appState.transactions[store.id] = [...rows, newRow];
-            saveAppState(`${store.code} tambah tanggal ${nextDate}`);
-            showToast(`Baris tanggal ${nextDate} ditambahkan.`);
-        }
+            closeEntryModal();
 
-        function handleClearRow(rowId) {
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-            const rows = appState.transactions[store.id] || [];
-            const updated = rows.map(r => r.id === rowId ? { ...r, omzet: 0, belanja: 0, customPercent: '' } : r);
-            appState.transactions[store.id] = updated;
-            saveAppState(`${store.code} kosongkan baris`);
-        }
-
-        function handleDeleteRow(rowId) {
-            const store = appState.stores.find(s => s.id === activeStoreId) || appState.stores[0];
-            const rows = appState.transactions[store.id] || [];
-            if (rows.length <= 1) {
-                handleClearRow(rowId);
-                return;
-            }
-            const updated = rows.filter(r => r.id !== rowId).map((r, i) => ({ ...r, no: i + 1 }));
-            appState.transactions[store.id] = updated;
-            saveAppState(`${store.code} hapus baris`);
-        }
-
-        // Store Management Operations
-        function inspectStore(stId) {
-            activeStoreId = stId;
-            if (!isBranchMode) {
-                switchServerTab('ledger');
-            } else {
-                renderAllViews();
-            }
-        }
-
-        function copyStoreLink(code) {
-            const fullUrl = getFullStoreUrl(code);
-            try {
-                const ta = document.createElement('textarea');
-                ta.value = fullUrl;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                showToast(`Link cabang ${code} disalin!`);
-            } catch (e) {
-                showToast(`Link: ${fullUrl}`);
-            }
-        }
-
-        function handleSaveStoreForm(e) {
-            e.preventDefault();
-            const stId = document.getElementById('manage-store-id').value;
-            const code = document.getElementById('manage-code').value.trim().toUpperCase();
-            const name = document.getElementById('manage-name').value.trim();
-            const loc = document.getElementById('manage-location').value.trim() || '-';
-            const mgr = document.getElementById('manage-manager').value.trim() || '-';
-
-            if (!code || !name) return;
-
-            if (stId) {
-                appState.stores = appState.stores.map(s => s.id === stId ? { ...s, code, name, location: loc, manager: mgr } : s);
-                saveAppState(`Update toko ${code}`);
-                showToast(`Toko ${code} diperbarui.`);
-            } else {
-                const newId = `toko-${Date.now()}`;
-                appState.stores.push({ id: newId, code, name, location: loc, manager: mgr });
-                appState.transactions[newId] = buildEmptyRows(DEFAULT_DATE, 22);
-                saveAppState(`Tambah cabang ${code}`);
-                showToast(`Toko ${code} ditambahkan.`);
-            }
-
-            resetManageForm();
-        }
-
-        function editStore(stId) {
-            const st = appState.stores.find(s => s.id === stId);
-            if (!st) return;
-            document.getElementById('manage-store-id').value = st.id;
-            document.getElementById('manage-code').value = st.code;
-            document.getElementById('manage-name').value = st.name;
-            document.getElementById('manage-location').value = st.location === '-' ? '' : st.location;
-            document.getElementById('manage-manager').value = st.manager === '-' ? '' : st.manager;
-            document.getElementById('manage-form-title').innerText = "Edit Data Toko";
-        }
-
-        function resetManageForm() {
-            document.getElementById('manage-store-id').value = '';
-            document.getElementById('manage-code').value = '';
-            document.getElementById('manage-name').value = '';
-            document.getElementById('manage-location').value = '';
-            document.getElementById('manage-manager').value = '';
-            document.getElementById('manage-form-title').innerText = "Tambah Toko Cabang Baru";
-        }
-
-        function deleteStore(stId) {
-            if (appState.stores.length <= 1) {
-                showToast('Harus ada minimal 1 toko.');
-                return;
-            }
-            appState.stores = appState.stores.filter(s => s.id !== stId);
-            delete appState.transactions[stId];
-            saveAppState('Hapus toko');
-            showToast('Toko dihapus.');
-        }
-
-        // Firebase & JSON Sync Modals
-        function openFirebaseModal() {
-            document.getElementById('fb-url-input').value = firebaseDbUrl;
-            document.getElementById('modal-firebase').classList.remove('hidden');
-        }
-
-        function closeFirebaseModal() {
-            document.getElementById('modal-firebase').classList.add('hidden');
-        }
-
-        function saveFirebaseConfig() {
-            const url = document.getElementById('fb-url-input').value.trim();
-            firebaseDbUrl = url;
-            try {
-                localStorage.setItem(FIREBASE_URL_KEY, url);
-            } catch (e) {}
-
-            closeFirebaseModal();
-            setupFirebaseStream();
-            saveAppState('Konfigurasi Firebase diperbarui');
-            showToast(url ? 'Terhubung ke Firebase Realtime!' : 'Menggunakan mode lokal.');
-        }
-
-        function exportDataJSON() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
-            const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", `multi_toko_backup_${Date.now()}.json`);
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            downloadAnchor.remove();
-        }
-
-        function importDataJSON(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
+            if (isFirebaseAvailable) {
                 try {
-                    const parsed = JSON.parse(e.target.result);
-                    if (parsed && Array.isArray(parsed.stores)) {
-                        appState = parsed;
-                        saveAppState('Restore data dari backup JSON');
-                        showToast('Restore data JSON berhasil!');
-                        closeFirebaseModal();
+                    const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'daily_records');
+                    if (docId) {
+                        const targetDoc = doc(db, 'artifacts', appId, 'public', 'data', 'daily_records', docId);
+                        await updateDoc(targetDoc, entryData);
+                        showToast("Data harian berhasil diperbarui online!", "success");
+                    } else {
+                        await addDoc(recordsCol, entryData);
+                        showToast("Data harian tersimpan online ke server!", "success");
                     }
                 } catch (err) {
-                    showToast('Format JSON tidak valid.');
+                    console.error("Firestore save error:", err);
+                    saveLocallyFallback(docId, entryData);
                 }
+            } else {
+                saveLocallyFallback(docId, entryData);
+            }
+        };
+
+        function saveLocallyFallback(docId, data) {
+            if (docId) {
+                const index = window.appState.records.findIndex(r => r.id === docId);
+                if (index !== -1) window.appState.records[index] = { id: docId, ...data };
+            } else {
+                window.appState.records.push({ id: 'local_' + Date.now(), ...data });
+            }
+            saveToLocalStorage();
+            renderAll();
+            showToast("Data tersimpan di penyimpanan lokal", "success");
+        }
+
+        window.editEntry = function(id) {
+            const row = window.appState.records.find(r => r.id === id);
+            if (!row) return;
+
+            document.getElementById('editDocId').value = row.id;
+            document.getElementById('modalTitle').innerHTML = `<i class="fa-solid fa-pen-to-square text-sky-400"></i> Edit Record Harian`;
+            document.getElementById('btnSaveSubmit').innerText = 'Perbarui Data';
+
+            document.getElementById('inputDate').value = row.date || '';
+            document.getElementById('inputDay').value = row.dayName || '';
+            document.getElementById('inputOmset').value = row.omset || 0;
+            document.getElementById('inputBelanja').value = row.belanja || 0;
+            document.getElementById('inputNotes').value = row.notes || '';
+
+            calculateLivePercentages();
+            document.getElementById('entryModal').classList.remove('hidden');
+        };
+
+        window.confirmDeleteEntry = function(id) {
+            window.appState.pendingDeleteId = id;
+            document.getElementById('deleteConfirmModal').classList.remove('hidden');
+        };
+
+        window.closeDeleteModal = function() {
+            window.appState.pendingDeleteId = null;
+            document.getElementById('deleteConfirmModal').classList.add('hidden');
+        };
+
+        document.getElementById('btnConfirmDelete').addEventListener('click', async () => {
+            const id = window.appState.pendingDeleteId;
+            if (!id) return;
+            closeDeleteModal();
+
+            if (isFirebaseAvailable) {
+                try {
+                    const targetDoc = doc(db, 'artifacts', appId, 'public', 'data', 'daily_records', id);
+                    await deleteDoc(targetDoc);
+                    showToast("Baris dihapus dari cloud!", "success");
+                } catch (err) {
+                    console.error("Firestore delete error:", err);
+                    deleteLocallyFallback(id);
+                }
+            } else {
+                deleteLocallyFallback(id);
+            }
+        });
+
+        function deleteLocallyFallback(id) {
+            window.appState.records = window.appState.records.filter(r => r.id !== id);
+            saveToLocalStorage();
+            renderAll();
+            showToast("Baris dihapus secara lokal", "success");
+        }
+
+        // --- SETTINGS ---
+        window.openSettingsModal = function() {
+            const s = window.appState.settings;
+            document.getElementById('setToko1Name').value = s.toko1Name || 'Toko 1';
+            document.getElementById('setToko2Name').value = s.toko2Name || 'Toko 2';
+            document.getElementById('setPct1').value = s.pct1;
+            document.getElementById('setPct2').value = s.pct2;
+            document.getElementById('setPct3').value = s.pct3;
+            document.getElementById('setPct4').value = s.pct4;
+            document.getElementById('settingsModal').classList.remove('hidden');
+        };
+
+        window.closeSettingsModal = function() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        };
+
+        window.handleSaveSettings = async function(e) {
+            e.preventDefault();
+
+            const newSettings = {
+                toko1Name: document.getElementById('setToko1Name').value.trim() || 'Toko 1',
+                toko2Name: document.getElementById('setToko2Name').value.trim() || 'Toko 2',
+                pct1: Number(document.getElementById('setPct1').value) || 7.5,
+                pct2: Number(document.getElementById('setPct2').value) || 7.0,
+                pct3: Number(document.getElementById('setPct3').value) || 6.5,
+                pct4: Number(document.getElementById('setPct4').value) || 6.0,
             };
-            reader.readAsText(file);
-        }
 
-        // Realtime Synchronizer (BroadcastChannel + SSE Stream)
-        function initRealtimeEngines() {
-            // 1. BroadcastChannel
-            try {
-                broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-                broadcastChannel.onmessage = function(e) {
-                    if (e.data && e.data.updatedAt && e.data.updatedAt > appState.updatedAt) {
-                        appState = e.data;
-                        triggerPulse('Broadcast');
-                        renderAllViews();
-                    }
-                };
-            } catch (e) {}
+            window.appState.settings = newSettings;
+            saveSettingsToLocalStorage();
+            closeSettingsModal();
+            renderAll();
 
-            // 2. Storage Event
-            window.addEventListener('storage', function(e) {
-                if (e.key === LOCAL_STORAGE_KEY) {
-                    loadLocalState();
-                    triggerPulse('Storage');
-                    renderAllViews();
+            if (isFirebaseAvailable) {
+                try {
+                    const settingsDoc = doc(db, 'artifacts', appId, 'public', 'data', 'store_settings', 'config');
+                    await setDoc(settingsDoc, newSettings, { merge: true });
+                    showToast("Pengaturan disimpan ke cloud!", "success");
+                } catch (err) {
+                    console.error("Save settings error:", err);
+                    showToast("Pengaturan disimpan secara lokal", "info");
                 }
-            });
+            } else {
+                showToast("Pengaturan disimpan secara lokal", "success");
+            }
+        };
 
-            // 3. Firebase SSE Stream
-            setupFirebaseStream();
+        // --- UTILS ---
+        function formatRp(val) {
+            return 'Rp ' + Math.round(val || 0).toLocaleString('id-ID');
         }
 
-        function setupFirebaseStream() {
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
+        function formatDateID(dateStr) {
+            if (!dateStr) return '-';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            return dateStr;
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const bgClass = type === 'success' ? 'bg-emerald-600 text-white' : 
+                            type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-white';
+
+            toast.className = `${bgClass} pointer-events-auto px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-info'}"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 50);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Startup
+        window.addEventListener('DOMContentLoaded', () => {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('filterMonth').value = `${yyyy}-${mm}`;
+
+            // Set initial hash if none exists
+            if (!window.location.hash) {
+                window.location.hash = '#toko1';
             }
 
-            if (!firebaseDbUrl) return;
-
-            try {
-                const cleanUrl = firebaseDbUrl.replace(/\/+$/, '');
-                eventSource = new EventSource(`${cleanUrl}/multi_toko_live.json`);
-
-                eventSource.addEventListener('put', function(e) {
-                    try {
-                        const parsed = JSON.parse(e.data);
-                        if (parsed && parsed.data) {
-                            if (parsed.path === '/' && parsed.data.stores) {
-                                if (!appState.updatedAt || parsed.data.updatedAt > appState.updatedAt) {
-                                    appState = parsed.data;
-                                    triggerPulse('Cloud Live');
-                                    renderAllViews();
-                                }
-                            }
-                        }
-                    } catch (err) {}
-                });
-            } catch (err) {}
-        }
-
-        // Initialization
-        window.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('input-form-date').value = DEFAULT_DATE;
-            loadLocalState();
-            initRealtimeEngines();
-            detectRouting();
-
-            window.addEventListener('hashchange', function() {
-                detectRouting();
-            });
+            window.applyRoleFromUrl();
+            initAuthAndSync();
         });
+
     </script>
 </body>
 </html>
