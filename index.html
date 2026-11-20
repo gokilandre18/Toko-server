@@ -122,7 +122,35 @@
 
         const STORAGE_KEY_STORES = 'server_multi_toko_stores_v5';
         const STORAGE_KEY_DATA = 'server_multi_toko_data_v5';
+        const STORAGE_KEY_LOGS = 'server_multi_toko_logs_v5';
         const BROADCAST_CHANNEL_NAME = 'server_multi_toko_sync_channel_v5';
+
+        // Penyimpanan memori cadangan jika localStorage diblokir oleh sandbox/iframe
+        window.__SERVER_MEMORY_STATE__ = window.__SERVER_MEMORY_STATE__ || {
+            stores: null,
+            transactions: null,
+            logs: []
+        };
+
+        function safeReadStorage(key) {
+            try {
+                const raw = localStorage.getItem(key);
+                if (raw !== null) return JSON.parse(raw);
+            } catch (e) {}
+            if (key === STORAGE_KEY_STORES) return window.__SERVER_MEMORY_STATE__.stores;
+            if (key === STORAGE_KEY_DATA) return window.__SERVER_MEMORY_STATE__.transactions;
+            if (key === STORAGE_KEY_LOGS) return window.__SERVER_MEMORY_STATE__.logs;
+            return null;
+        }
+
+        function safeWriteStorage(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {}
+            if (key === STORAGE_KEY_STORES) window.__SERVER_MEMORY_STATE__.stores = value;
+            if (key === STORAGE_KEY_DATA) window.__SERVER_MEMORY_STATE__.transactions = value;
+            if (key === STORAGE_KEY_LOGS) window.__SERVER_MEMORY_STATE__.logs = value;
+        }
 
         const HARI_ID = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
 
@@ -274,25 +302,20 @@
 
         function App() {
             const [stores, setStores] = useState(() => {
-                try {
-                    const saved = localStorage.getItem(STORAGE_KEY_STORES);
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-                    }
-                } catch (e) {}
+                const saved = safeReadStorage(STORAGE_KEY_STORES);
+                if (Array.isArray(saved) && saved.length > 0) return saved;
                 return INITIAL_STORES;
             });
 
             const [allTransactions, setAllTransactions] = useState(() => {
-                try {
-                    const saved = localStorage.getItem(STORAGE_KEY_DATA);
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (parsed && typeof parsed === 'object') return parsed;
-                    }
-                } catch (e) {}
+                const saved = safeReadStorage(STORAGE_KEY_DATA);
+                if (saved && typeof saved === 'object') return saved;
                 return buildInitialAllData(INITIAL_STORES, getTodayISO());
+            });
+
+            const [activityLogs, setActivityLogs] = useState(() => {
+                const saved = safeReadStorage(STORAGE_KEY_LOGS);
+                return Array.isArray(saved) ? saved : [];
             });
 
             // Jika URL memiliki hash (#tk-01, #tk-02, dst), tampilan murni Buku Toko cabang tersebut saja.
@@ -327,9 +350,30 @@
 
             // Toast Notification
             const [toastMessage, setToastMessage] = useState('');
+            const [lastSyncTime, setLastSyncTime] = useState(() => new Date().toLocaleTimeString('id-ID'));
+            const [syncPulse, setSyncPulse] = useState(false);
             const chartCanvasRef = useRef(null);
             const chartInstanceRef = useRef(null);
             const channelRef = useRef(null);
+
+            const triggerSyncPulse = () => {
+                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
+                setSyncPulse(true);
+                setTimeout(() => setSyncPulse(false), 900);
+            };
+
+            const appendActivityLog = (message) => {
+                const entry = {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    time: new Date().toLocaleTimeString('id-ID'),
+                    message
+                };
+                setActivityLogs((prev) => {
+                    const next = [entry, ...prev].slice(0, 15);
+                    safeWriteStorage(STORAGE_KEY_LOGS, next);
+                    return next;
+                });
+            };
 
             const showToast = (msg) => {
                 setToastMessage(msg);
@@ -339,26 +383,30 @@
             };
 
             // Simpan ke localStorage & broadcast ke tab/jendela lain + cloud
-            const persistStores = (updatedStores) => {
+            const persistStores = (updatedStores, logMsg = '') => {
                 setStores(updatedStores);
-                try {
-                    localStorage.setItem(STORAGE_KEY_STORES, JSON.stringify(updatedStores));
-                } catch (e) {}
+                triggerSyncPulse();
+                safeWriteStorage(STORAGE_KEY_STORES, updatedStores);
+                if (logMsg) appendActivityLog(logMsg);
                 if (channelRef.current) {
-                    channelRef.current.postMessage({ type: 'SYNC_STORES', payload: updatedStores });
+                    try {
+                        channelRef.current.postMessage({ type: 'SYNC_STORES', payload: updatedStores, logMsg, ts: Date.now() });
+                    } catch (e) {}
                 }
                 if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
                     window.FirebaseBridge.savePublicDoc('server_state', 'stores_doc', { list: updatedStores, updatedAt: Date.now() });
                 }
             };
 
-            const persistTransactions = (updatedMap) => {
+            const persistTransactions = (updatedMap, logMsg = '') => {
                 setAllTransactions(updatedMap);
-                try {
-                    localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(updatedMap));
-                } catch (e) {}
+                triggerSyncPulse();
+                safeWriteStorage(STORAGE_KEY_DATA, updatedMap);
+                if (logMsg) appendActivityLog(logMsg);
                 if (channelRef.current) {
-                    channelRef.current.postMessage({ type: 'SYNC_DATA', payload: updatedMap });
+                    try {
+                        channelRef.current.postMessage({ type: 'SYNC_DATA', payload: updatedMap, logMsg, ts: Date.now() });
+                    } catch (e) {}
                 }
                 if (window.FirebaseBridge && window.FirebaseBridge.isConfigured) {
                     window.FirebaseBridge.savePublicDoc('server_state', 'transactions_doc', { map: updatedMap, updatedAt: Date.now() });
@@ -374,8 +422,14 @@
                         if (!event || !event.data) return;
                         if (event.data.type === 'SYNC_STORES' && Array.isArray(event.data.payload)) {
                             setStores(event.data.payload);
+                            safeWriteStorage(STORAGE_KEY_STORES, event.data.payload);
+                            if (event.data.logMsg) appendActivityLog(`[Masuk] ${event.data.logMsg}`);
+                            triggerSyncPulse();
                         } else if (event.data.type === 'SYNC_DATA' && event.data.payload) {
                             setAllTransactions(event.data.payload);
+                            safeWriteStorage(STORAGE_KEY_DATA, event.data.payload);
+                            if (event.data.logMsg) appendActivityLog(`[Masuk] ${event.data.logMsg}`);
+                            triggerSyncPulse();
                         }
                     };
                 } catch (e) {}
@@ -384,12 +438,22 @@
                     if (e.key === STORAGE_KEY_STORES && e.newValue) {
                         try {
                             const parsed = JSON.parse(e.newValue);
-                            if (Array.isArray(parsed)) setStores(parsed);
+                            if (Array.isArray(parsed)) {
+                                setStores(parsed);
+                                safeWriteStorage(STORAGE_KEY_STORES, parsed);
+                                appendActivityLog('[Storage] Data toko diperbarui dari tab lain');
+                                triggerSyncPulse();
+                            }
                         } catch (err) {}
                     } else if (e.key === STORAGE_KEY_DATA && e.newValue) {
                         try {
                             const parsed = JSON.parse(e.newValue);
-                            if (parsed && typeof parsed === 'object') setAllTransactions(parsed);
+                            if (parsed && typeof parsed === 'object') {
+                                setAllTransactions(parsed);
+                                safeWriteStorage(STORAGE_KEY_DATA, parsed);
+                                appendActivityLog('[Storage] Input transaksi baru masuk ke server');
+                                triggerSyncPulse();
+                            }
                         } catch (err) {}
                     }
                 };
@@ -663,8 +727,10 @@
 
             // Handlers Transaksi Buku Toko
             const handleInlineUpdate = (rowId, field, value) => {
+                let targetLabel = '';
                 const updatedRows = currentRows.map((row) => {
                     if (row.id !== rowId) return row;
+                    targetLabel = `Baris #${row.no} (${formatDisplayDate(row.date)})`;
                     if (field === 'date') {
                         return { ...row, date: value, day: getHariName(value) };
                     }
@@ -674,7 +740,10 @@
                     }
                     return { ...row, [field]: value };
                 });
-                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+                persistTransactions(
+                    { ...allTransactions, [activeStore.id]: updatedRows },
+                    `${activeStore.code} mengubah ${field} pada ${targetLabel}`
+                );
             };
 
             const handleSaveTransaction = (e) => {
@@ -707,8 +776,10 @@
                         }
                     ];
                 }
-
-                persistTransactions({ ...allTransactions, [activeStore.id]: updatedRows });
+                persistTransactions(
+                    { ...allTransactions, [activeStore.id]: updatedRows },
+                    `${activeStore.code} input ${formatDisplayDate(targetDate)} (Omset ${formatRupiah(omzVal)})`
+                );
                 setNewOmzet('');
                 setNewBelanja('');
                 setNewPercent('');
@@ -914,18 +985,20 @@
                                                     : 'Server Pusat Multi-Toko'}
                                             </h1>
                                             <span
-                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                                                    syncMode === 'cloud'
-                                                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                                                        : 'bg-sky-500/10 text-sky-300 border-sky-500/30'
+                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 transition ${
+                                                    syncPulse
+                                                        ? 'bg-amber-400/20 text-amber-200 border-amber-400 scale-105'
+                                                        : syncMode === 'cloud'
+                                                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                                            : 'bg-sky-500/10 text-sky-300 border-sky-500/30'
                                                 }`}
                                             >
                                                 <span
                                                     className={`w-1.5 h-1.5 rounded-full ${
-                                                        syncMode === 'cloud' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'
+                                                        syncPulse ? 'bg-amber-300 animate-ping' : syncMode === 'cloud' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'
                                                     }`}
                                                 ></span>
-                                                {isBranchView ? 'Terhubung ke Pusat' : 'Pantau Live'}
+                                                {syncPulse ? 'Sinkron!' : (isBranchView ? 'Terhubung ke Pusat' : 'Pantau Live')} • {lastSyncTime}
                                             </span>
                                             <span className="text-xs text-slate-400 capitalize">
                                                 • {todayHari}, {todayDisplay}
@@ -1491,6 +1564,38 @@
                                     </div>
                                 </div>
 
+                                {/* Log Aktivitas Real-Time */}
+                                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-xl">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div>
+                                            <h3 className="text-base font-bold text-white">Log Aktivitas Real-Time ke Pusat</h3>
+                                            <p className="text-xs text-slate-400">
+                                                Mencatat setiap input/perubahan data dari cabang maupun pusat secara langsung.
+                                            </p>
+                                        </div>
+                                        <span className="text-xs text-sky-300 font-semibold">
+                                            Terakhir sinkron: {lastSyncTime}
+                                        </span>
+                                    </div>
+                                    {activityLogs.length === 0 ? (
+                                        <p className="text-xs text-slate-400 py-3">
+                                            Belum ada aktivitas perubahan data. Coba input omset/belanja pada salah satu toko.
+                                        </p>
+                                    ) : (
+                                        <ul className="space-y-1.5 text-xs">
+                                            {activityLogs.map((item) => (
+                                                <li
+                                                    key={item.id}
+                                                    className="flex items-center justify-between gap-3 bg-black border border-neutral-800/80 rounded-xl px-3 py-2"
+                                                >
+                                                    <span className="text-slate-200">{item.message}</span>
+                                                    <span className="text-slate-400 font-mono whitespace-nowrap">{item.time}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+
                                 <div className="bg-neutral-950 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
                                     <div className="p-4 sm:p-5 border-b border-neutral-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                         <div>
@@ -1746,8 +1851,42 @@
             );
         }
 
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, errorMsg: '' };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, errorMsg: error?.message || 'Terjadi kesalahan render.' };
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+                            <div className="max-w-md w-full bg-neutral-950 border border-red-800 rounded-2xl p-5 space-y-3">
+                                <h2 className="text-base font-bold text-red-400">Tampilan Gagal Dimuat</h2>
+                                <p className="text-xs text-slate-300">{this.state.errorMsg}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => window.location.reload()}
+                                    className="px-4 py-2 rounded-xl bg-sky-500 text-black text-xs font-bold cursor-pointer"
+                                >
+                                    Muat Ulang Halaman
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
     </script>
 </body>
 </html>
